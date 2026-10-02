@@ -133,6 +133,7 @@ async function main() {
     return;
   }
 
+  console.log("Подключились к базе, добавляем тестовые данные… (может занять до минуты)");
   await prisma.$transaction(async (tx) => {
     // Услуги
     const serviceIds = {} as Record<ServiceKey, string>;
@@ -242,7 +243,11 @@ async function main() {
         },
       });
     }
-  });
+  },
+  // По умолчанию Prisma закрывает транзакцию через 5 секунд. До облачной базы каждый запрос
+  // идёт заметное время, а их здесь несколько десятков — даём запас.
+  { maxWait: 30_000, timeout: 120_000 },
+  );
 
   const counts = {
     "услуг": await prisma.service.count(),
