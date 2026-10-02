@@ -13,7 +13,9 @@
 Готово:
 
 - **Этап 1 — лендинг** (`/`);
-- **Этап 2 — интерфейс записи** (`/book`), пока без настоящего backend.
+- **Этап 2 — интерфейс записи** (`/book`), пока без настоящего backend;
+- **Этап 3 — база данных** (`packages/db`): схема, миграция, тестовые данные.
+  Чтобы подключить свою базу Supabase — [docs/supabase.md](docs/supabase.md).
 
 Данные пока моковые (`apps/web/src/data/mock.ts`), запросы к серверу имитирует `apps/web/src/lib/mockApi.ts`.
 
@@ -27,7 +29,8 @@
 ```text
 apps/
   web/        Next.js — сайт: / и /book (позже /booking/[token], /admin)
-packages/     общие пакеты (появятся на следующих этапах)
+packages/
+  db/         Prisma: схема БД, миграции, seed, клиент для API
 docs/         PRD, SPEC, TASKS
 ```
 
@@ -46,4 +49,9 @@ npm run dev        # http://localhost:3000
 npm run build      # production-сборка
 npm run start      # запуск собранного сайта
 npm run typecheck  # проверка типов
+
+npm run db:deploy  # создать таблицы в базе
+npm run db:seed    # заполнить тестовыми данными
+npm run db:check   # посмотреть, что в базе
+npm run db:studio  # открыть базу в браузере
 ```

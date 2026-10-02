@@ -125,23 +125,23 @@ const reviews = [...]
 - [ ] Получить `DATABASE_URL`.
 - [ ] Получить `DIRECT_URL`.
 - [ ] Получить server credentials для Storage.
-- [ ] Добавить `.env.example`.
-- [ ] Установить Prisma.
-- [ ] Создать Prisma schema.
-- [ ] Создать таблицу `services`.
-- [ ] Создать таблицу `barbers`.
-- [ ] Создать `barber_services`.
-- [ ] Создать `working_hours`.
-- [ ] Создать `breaks`.
-- [ ] Создать `time_off`.
-- [ ] Создать `clients`.
-- [ ] Создать `bookings`.
-- [ ] Создать `booking_services`.
-- [ ] Создать `reviews`.
-- [ ] Создать `settings`.
-- [ ] Создать `admin_users`.
-- [ ] Создать первую миграцию.
-- [ ] Добавить seed с тестовыми данными.
+- [x] Добавить `.env.example`.
+- [x] Установить Prisma.
+- [x] Создать Prisma schema.
+- [x] Создать таблицу `services`.
+- [x] Создать таблицу `barbers`.
+- [x] Создать `barber_services`.
+- [x] Создать `working_hours`.
+- [x] Создать `breaks`.
+- [x] Создать `time_off`.
+- [x] Создать `clients`.
+- [x] Создать `bookings`.
+- [x] Создать `booking_services`.
+- [x] Создать `reviews`.
+- [x] Создать `settings`.
+- [x] Создать `admin_users`.
+- [x] Создать первую миграцию.
+- [x] Добавить seed с тестовыми данными.
 - [ ] Проверить данные через Supabase dashboard / Prisma.
 
 ## Готово, когда
@@ -152,6 +152,32 @@ const reviews = [...]
 - барберы;
 - расписание;
 - настройки.
+
+## Статус: 🟡 код готов, нужен ваш проект Supabase
+
+Сделано в коде (`packages/db`):
+
+- Prisma 7 + адаптер `@prisma/adapter-pg`; схема — `prisma/schema.prisma`, настройки CLI — `prisma.config.ts`.
+- Все 13 таблиц из `docs/spec.md`, enum-ы статусов/источников/типов исключений.
+- Миграция `prisma/migrations/*_init`: таблицы + CHECK-ограничения + RLS на всех таблицах.
+- Seed (`prisma/seed.ts`): 6 услуг, 4 барбера, услуги барберов (с примером своей цены), график, обеды,
+  отпуск мастера, закрытие барбершопа, 9 настроек, 4 клиента с завершёнными визитами и отзывами.
+  Seed заполняет только пустую базу.
+- `npm run db:check` — печатает содержимое базы.
+- Проверено на локальной PostgreSQL 16: миграция, seed, повторный seed, CHECK-ограничения, RLS.
+
+Осталось сделать вам (инструкция — [docs/supabase.md](supabase.md)):
+
+- создать проект Supabase и скопировать `DATABASE_URL` / `DIRECT_URL` в `packages/db/.env`;
+- сохранить Project URL и secret key для Storage;
+- выполнить `npm run db:deploy` и `npm run db:seed`;
+- проверить данные: `npm run db:check` или Table Editor в Supabase.
+
+Отличия от черновика модели в spec:
+
+- у барбера добавлены `role` и `specialties` — их показывает сайт;
+- Telegram id хранятся строкой (числа Telegram не помещаются в обычный int);
+- у `reviews.booking_id` — уникальность: один отзыв на визит.
 
 ---
 

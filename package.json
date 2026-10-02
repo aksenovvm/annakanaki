@@ -12,7 +12,13 @@
     "build": "npm run build --workspace=@barbershop/web",
     "start": "npm run start --workspace=@barbershop/web",
     "lint": "npm run lint --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:migrate": "npm run db:migrate --workspace=@barbershop/db",
+    "db:deploy": "npm run db:deploy --workspace=@barbershop/db",
+    "db:seed": "npm run db:seed --workspace=@barbershop/db",
+    "db:reset": "npm run db:reset --workspace=@barbershop/db",
+    "db:studio": "npm run db:studio --workspace=@barbershop/db",
+    "db:check": "npm run db:check --workspace=@barbershop/db"
   },
   "engines": {
     "node": ">=20"
