@@ -10,13 +10,23 @@
 
 ## Текущий этап
 
-**Этап 1 — лендинг** готов. Данные пока моковые (`apps/web/src/data/mock.ts`).
+Готово:
+
+- **Этап 1 — лендинг** (`/`);
+- **Этап 2 — интерфейс записи** (`/book`), пока без настоящего backend.
+
+Данные пока моковые (`apps/web/src/data/mock.ts`), запросы к серверу имитирует `apps/web/src/lib/mockApi.ts`.
+
+Чтобы посмотреть состояния ошибок в форме записи:
+
+- `http://localhost:3000/book?simulate=error` — не загрузилось свободное время;
+- `http://localhost:3000/book?simulate=slot-taken` — время «заняли» в момент подтверждения.
 
 ## Структура
 
 ```text
 apps/
-  web/        Next.js — сайт (позже /book, /booking/[token], /admin)
+  web/        Next.js — сайт: / и /book (позже /booking/[token], /admin)
 packages/     общие пакеты (появятся на следующих этапах)
 docs/         PRD, SPEC, TASKS
 ```

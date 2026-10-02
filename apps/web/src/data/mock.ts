@@ -22,6 +22,8 @@ export type Barber = {
   experienceYears: number;
   rating: number;
   specialties: string[];
+  /** Какие услуги выполняет мастер (в БД это таблица barber_services) */
+  serviceIds: string[];
   /** Цвет-заглушка вместо фото, пока нет Supabase Storage */
   accent: string;
 };
@@ -107,6 +109,7 @@ export const barbers: Barber[] = [
     rating: 4.9,
     specialties: ["Фейд", "Классика", "Борода"],
     accent: "#c2853d",
+    serviceIds: ["haircut", "beard", "combo", "shave", "kids", "buzz"],
   },
   {
     id: "aziz",
@@ -117,6 +120,7 @@ export const barbers: Barber[] = [
     rating: 4.8,
     specialties: ["Текстура", "Кроп", "Борода"],
     accent: "#4f7a6b",
+    serviceIds: ["haircut", "beard", "combo", "buzz"],
   },
   {
     id: "rustam",
@@ -127,6 +131,7 @@ export const barbers: Barber[] = [
     rating: 4.9,
     specialties: ["Бритьё", "Классика"],
     accent: "#6b5b95",
+    serviceIds: ["haircut", "beard", "combo", "shave"],
   },
   {
     id: "dilshod",
@@ -137,6 +142,7 @@ export const barbers: Barber[] = [
     rating: 4.7,
     specialties: ["Машинка", "Детские"],
     accent: "#3d6ea8",
+    serviceIds: ["haircut", "kids", "buzz", "beard"],
   },
 ];
 
@@ -174,3 +180,9 @@ export const reviews: Review[] = [
     date: "2026-08-30",
   },
 ];
+
+/**
+ * Этап 2: тестовые свободные слоты (время по Ташкенту).
+ * На этапе 5 их будет рассчитывать backend: `GET /api/v1/availability`.
+ */
+export const mockSlotTimes = ["10:00", "11:00", "12:00", "14:00", "15:00"];

@@ -913,20 +913,3 @@ button {
     padding-bottom: 0;
   }
 }
-
-/* Временная страница /book */
-.placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  min-height: calc(100dvh - var(--header-h));
-  justify-content: center;
-  padding: 48px var(--gutter);
-  text-align: center;
-}
-
-.placeholder p {
-  max-width: 440px;
-  color: var(--text-muted);
-}
