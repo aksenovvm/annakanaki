@@ -659,3 +659,13 @@
     transform: rotate(360deg);
   }
 }
+
+.notice {
+  width: 100%;
+  margin-top: 16px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  font-size: 14px;
+  text-align: left;
+}
