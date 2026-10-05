@@ -121,10 +121,10 @@ const reviews = [...]
 
 ## Задачи
 
-- [ ] Создать проект Supabase.
-- [ ] Получить `DATABASE_URL`.
-- [ ] Получить `DIRECT_URL`.
-- [ ] Получить server credentials для Storage.
+- [x] Создать проект Supabase.
+- [x] Получить `DATABASE_URL`.
+- [x] Получить `DIRECT_URL`.
+- [x] Получить server credentials для Storage.
 - [x] Добавить `.env.example`.
 - [x] Установить Prisma.
 - [x] Создать Prisma schema.
@@ -142,7 +142,7 @@ const reviews = [...]
 - [x] Создать `admin_users`.
 - [x] Создать первую миграцию.
 - [x] Добавить seed с тестовыми данными.
-- [ ] Проверить данные через Supabase dashboard / Prisma.
+- [x] Проверить данные через Supabase dashboard / Prisma.
 
 ## Готово, когда
 
@@ -153,7 +153,11 @@ const reviews = [...]
 - расписание;
 - настройки.
 
-## Статус: 🟡 код готов, нужен ваш проект Supabase
+## Статус: ✅ выполнен
+
+- Проект Supabase создан, таблицы созданы (`npm run db:deploy`), тестовые данные загружены (`npm run db:seed`),
+  проверено через `npm run db:check`.
+- Инструкция по подключению — [docs/supabase.md](supabase.md).
 
 Сделано в коде (`packages/db`):
 
@@ -164,14 +168,6 @@ const reviews = [...]
   отпуск мастера, закрытие барбершопа, 9 настроек, 4 клиента с завершёнными визитами и отзывами.
   Seed заполняет только пустую базу.
 - `npm run db:check` — печатает содержимое базы.
-- Проверено на локальной PostgreSQL 16: миграция, seed, повторный seed, CHECK-ограничения, RLS.
-
-Осталось сделать вам (инструкция — [docs/supabase.md](supabase.md)):
-
-- создать проект Supabase и скопировать `DATABASE_URL` / `DIRECT_URL` в `packages/db/.env`;
-- сохранить Project URL и secret key для Storage;
-- выполнить `npm run db:deploy` и `npm run db:seed`;
-- проверить данные: `npm run db:check` или Table Editor в Supabase.
 
 Отличия от черновика модели в spec:
 
