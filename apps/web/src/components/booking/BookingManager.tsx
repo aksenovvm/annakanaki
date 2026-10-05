@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Booking, Slot } from "@barbershop/shared";
 import { shop } from "@/data/shop";
-import { ApiError, cancelBooking, rescheduleBooking } from "@/lib/apiClient";
+import { ApiError, cancelBooking, fetchBooking, rescheduleBooking } from "@/lib/apiClient";
 import { formatMoment } from "@/lib/date";
 import { formatDuration, formatPrice } from "@/lib/format";
 import { CheckIcon } from "../Icons";
@@ -33,7 +33,11 @@ export function BookingManager({ initialBooking, justCreated }: { initialBooking
   const [slot, setSlot] = useState<Slot | null>(null);
   const [slotsRefresh, setSlotsRefresh] = useState(0);
 
+  const busyRef = useRef(false);
+
   async function run(action: () => Promise<Booking>, successText: string) {
+    if (busyRef.current) return; // второе нажатие, пока идёт первый запрос
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -47,7 +51,13 @@ export function BookingManager({ initialBooking, justCreated }: { initialBooking
         setSlot(null);
         setSlotsRefresh((k) => k + 1);
       }
+      // Запись изменилась на сервере (уже отменена, или стало поздно) — показываем актуальное состояние
+      if (e instanceof ApiError && (e.code === "TOO_LATE_TO_CHANGE" || e.code === "BOOKING_NOT_ACTIVE")) {
+        setMode("view");
+        fetchBooking(booking.manageToken).then(setBooking, () => undefined);
+      }
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }

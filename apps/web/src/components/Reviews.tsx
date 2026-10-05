@@ -1,4 +1,4 @@
-import type { PublicReview } from "@barbershop/shared";
+import { toShopDate, type PublicReview } from "@barbershop/shared";
 import type { Loaded } from "@/lib/api";
 import { formatDate, plural } from "@/lib/format";
 import { LoadError } from "./LoadError";
@@ -33,7 +33,7 @@ export function Reviews({ reviews }: { reviews: Loaded<PublicReview[]> }) {
                     <div>
                       <div className="review__author">{review.clientName}</div>
                       <div className="review__meta">
-                        Мастер: {review.barberName} · {formatDate(review.createdAt.slice(0, 10))}
+                        Мастер: {review.barberName} · {formatDate(toShopDate(new Date(review.createdAt)))}
                       </div>
                     </div>
                   </figcaption>

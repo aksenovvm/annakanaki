@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import type { ReactNode } from "react";
 import { Manrope } from "next/font/google";
 import { shop } from "@/data/shop";
 import "./globals.css";
@@ -26,7 +27,7 @@ export const viewport: Viewport = {
 // Выставляет тему до первой отрисовки, чтобы не было «мигания» светлой темы.
 const themeScript = `(function(){try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}})();`;
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ru" className={manrope.variable} suppressHydrationWarning>
       <head>

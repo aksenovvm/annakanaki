@@ -57,6 +57,7 @@ export function BookingWizard({ catalog }: { catalog: Catalog }) {
   const [slotsRefresh, setSlotsRefresh] = useState(0);
   const topRef = useRef<HTMLDivElement>(null);
   const isFirstRender = useRef(true);
+  const submittingRef = useRef(false);
 
   // При смене шага возвращаемся к началу формы — важно на телефоне.
   useEffect(() => {
@@ -101,6 +102,10 @@ export function BookingWizard({ catalog }: { catalog: Catalog }) {
   ][step];
 
   async function submit() {
+    // Защита от двойного нажатия: состояние React обновляется не мгновенно,
+    // а второй запрос с «Любой свободный» мог бы записать человека ещё к одному мастеру.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -119,6 +124,7 @@ export function BookingWizard({ catalog }: { catalog: Catalog }) {
           : { code: "UNKNOWN", message: "Не получилось создать запись. Попробуйте ещё раз." },
       );
       setSubmitting(false);
+      submittingRef.current = false;
     }
   }
 

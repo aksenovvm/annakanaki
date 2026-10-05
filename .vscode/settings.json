@@ -1,0 +1,6 @@
+{
+  // VS Code проверяет код той же версией TypeScript, что и проект (node_modules),
+  // а не своей встроенной — иначе редактор может показывать ошибки, которых нет при сборке.
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true
+}

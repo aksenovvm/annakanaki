@@ -24,6 +24,21 @@ export function Header() {
     };
   }, [menuOpen]);
 
+  // Меню закрывается по Escape и при переходе на ширину десктопа (поворот планшета, растягивание окна),
+  // иначе страница осталась бы заблокированной, а меню — невидимым.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const desktop = window.matchMedia("(min-width: 900px)");
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
+    const onResize = () => desktop.matches && setMenuOpen(false);
+    window.addEventListener("keydown", onKey);
+    desktop.addEventListener("change", onResize);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      desktop.removeEventListener("change", onResize);
+    };
+  }, [menuOpen]);
+
   const close = () => setMenuOpen(false);
 
   return (

@@ -6,7 +6,7 @@
  * Тестовые клиенты — с телефонами +998000000xxx.
  */
 import type { FastifyInstance } from "fastify";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Booking, Slot } from "@barbershop/shared";
 import { addDays, todayInShop } from "@barbershop/shared";
 
@@ -15,7 +15,10 @@ let prisma: typeof import("./db").prisma;
 
 let serviceId: string;
 let barberId: string;
-/** День с большим количеством свободных слотов */
+/** Дни, где у мастера много свободного времени. Каждому тесту — свой день, чтобы тесты не мешали друг другу. */
+let testDays: string[] = [];
+let testDayIndex = 0;
+/** День текущего теста */
 let testDate: string;
 
 const createdBookingIds: string[] = [];
@@ -57,14 +60,20 @@ beforeAll(async () => {
   barberId = barber.id;
   serviceId = barber.services[0].serviceId;
 
-  // Ищем день через неделю-две, где у мастера много свободного времени
+  // Дни через неделю-три, где у мастера много свободного времени
   const res = await app.inject({
     method: "GET",
-    url: `/api/v1/availability/days?serviceIds=${serviceId}&barberId=${barberId}&from=${addDays(todayInShop(), 7)}&days=14`,
+    url: `/api/v1/availability/days?serviceIds=${serviceId}&barberId=${barberId}&from=${addDays(todayInShop(), 7)}&days=21`,
   });
-  const best = res.json().days.sort((a: { slotsCount: number }, b: { slotsCount: number }) => b.slotsCount - a.slotsCount)[0];
-  expect(best.slotsCount).toBeGreaterThan(5);
-  testDate = best.date;
+  testDays = res
+    .json()
+    .days.filter((d: { slotsCount: number }) => d.slotsCount >= 20)
+    .map((d: { date: string }) => d.date);
+  expect(testDays.length, "нужны дни со свободным временем").toBeGreaterThan(3);
+});
+
+beforeEach(() => {
+  testDate = testDays[testDayIndex++ % testDays.length];
 });
 
 afterAll(async () => {
@@ -86,16 +95,20 @@ describe("защита от двойной записи", () => {
     expect(conflict.json().code).toBe("SLOT_TAKEN");
   });
 
-  it("пять параллельных запросов на один слот: создаётся ровно одна запись", async () => {
-    const slots = await freeSlots();
-    const slot = slots[slots.length - 3];
+  it("десять параллельных запросов на каждый из трёх слотов: одна запись на слот, никаких 500", async () => {
+    // При таком количестве одновременных запросов PostgreSQL иногда ловит deadlock (40P01).
+    // API должен повторить транзакцию и ответить 409, а не 500.
+    for (let round = 0; round < 3; round++) {
+      // каждый раз берём заново: после записи соседние слоты, пересекающиеся с ней, пропадают
+      const slots = await freeSlots();
+      const slot = slots[Math.floor(slots.length / 2)];
+      const results = await Promise.all(Array.from({ length: 10 }, () => book(slot.startsAt)));
+      const codes = results.map((r) => r.statusCode);
+      const bodies = results.map((r) => r.body).join(" | ");
 
-    const results = await Promise.all(Array.from({ length: 5 }, () => book(slot.startsAt)));
-    const codes = results.map((r) => r.statusCode);
-    const bodies = results.map((r) => r.body).join(" | ");
-
-    expect(codes.filter((c) => c === 201), bodies).toHaveLength(1);
-    expect(codes.filter((c) => c === 409), bodies).toHaveLength(4);
+      expect(codes.filter((c) => c === 201), bodies).toHaveLength(1);
+      expect(codes.filter((c) => c === 409), bodies).toHaveLength(9);
+    }
   });
 
   it("база сама не даёт сохранить пересекающуюся запись в обход API (23P01)", async () => {
@@ -120,6 +133,56 @@ describe("защита от двойной записи", () => {
     });
     const error = await overlapping.then(() => null, (e: unknown) => e);
     expect(isOverlapError(error)).toBe(true);
+  });
+});
+
+describe("deadlock при одновременных записях", () => {
+  it("настоящий deadlock в PostgreSQL распознаётся как временная ошибка (40P01)", async () => {
+    const { isRetryableError } = await import("@barbershop/db");
+    // Две транзакции: каждая занимает «своё» время, а потом пытается занять время другой.
+    // Обе ждут друг друга — PostgreSQL обнаружит deadlock и прервёт одну из них.
+    const slots = await freeSlots();
+    const [slotA, slotB] = [slots[0], slots.at(-1)!].map((s) => new Date(s.startsAt));
+    const client = await prisma.client.create({ data: { name: "Тест", phone: nextPhone() } });
+    const row = (start: Date, tag: string) => ({
+      clientId: client.id,
+      barberId,
+      startsAt: start,
+      endsAt: new Date(start.getTime() + 30 * 60_000),
+      totalPrice: 1,
+      totalDurationMin: 30,
+      source: "admin" as const,
+      manageToken: `test-deadlock-${tag}-${Date.now()}`,
+    });
+
+    // «Барьер»: вторые вставки начинаются только когда обе первые уже сделаны
+    let arrived = 0;
+    let release!: () => void;
+    const bothReady = new Promise<void>((resolve) => (release = resolve));
+    const meet = () => {
+      if (++arrived === 2) release();
+      return bothReady;
+    };
+
+    const run = (first: Date, second: Date, tag: string) =>
+      prisma.$transaction(
+        async (tx) => {
+          const own = await tx.booking.create({ data: row(first, `${tag}1`) });
+          await meet();
+          const other = await tx.booking.create({ data: row(second, `${tag}2`) });
+          return [own.id, other.id];
+        },
+        { timeout: 20_000 },
+      );
+
+    const results = await Promise.allSettled([run(slotA, slotB, "a"), run(slotB, slotA, "b")]);
+    const ok = results.filter((r) => r.status === "fulfilled");
+    const failed = results.filter((r) => r.status === "rejected");
+    for (const r of ok) createdBookingIds.push(...r.value);
+
+    expect(ok).toHaveLength(1);
+    expect(failed).toHaveLength(1);
+    expect(isRetryableError(failed[0].reason), String(failed[0].reason)).toBe(true);
   });
 });
 
@@ -197,9 +260,8 @@ describe("запись, перенос и отмена", () => {
   });
 
   it("перенос на занятое время — 409 SLOT_TAKEN", async () => {
-    const slots = await freeSlots();
-    const a: Booking = (await book(slots[6].startsAt)).json();
-    const b: Booking = (await book(slots[10].startsAt)).json();
+    const a: Booking = (await book((await freeSlots())[0].startsAt)).json();
+    const b: Booking = (await book((await freeSlots()).at(-1)!.startsAt)).json();
 
     const res = await app.inject({
       method: "POST",

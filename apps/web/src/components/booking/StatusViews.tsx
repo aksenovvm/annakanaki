@@ -1,5 +1,7 @@
 /** Общие UI-состояния: загрузка, пусто, ошибка. */
 
+import type { ReactNode } from "react";
+
 export function LoadingSlots() {
   return (
     <div className="slots" aria-busy="true" aria-label="Загружаем свободное время">
@@ -10,7 +12,7 @@ export function LoadingSlots() {
   );
 }
 
-export function EmptyState({ title, text, action }: { title: string; text: string; action?: React.ReactNode }) {
+export function EmptyState({ title, text, action }: { title: string; text: string; action?: ReactNode }) {
   return (
     <div className="state">
       <div className="state__icon" aria-hidden="true">

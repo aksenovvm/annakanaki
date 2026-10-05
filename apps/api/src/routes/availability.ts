@@ -16,7 +16,8 @@ import { loadSettings } from "../domain/settings";
 /** ?serviceIds=uuid1,uuid2 → ["uuid1", "uuid2"] */
 const serviceIdsParam = z
   .string()
-  .transform((value) => value.split(",").map((id) => id.trim()).filter(Boolean))
+  // повторы убираем: ?serviceIds=a,a — это одна услуга
+  .transform((value) => [...new Set(value.split(",").map((id) => id.trim()).filter(Boolean))])
   .pipe(z.array(z.uuid()).min(1).max(5));
 
 const baseQuery = z.object({

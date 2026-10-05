@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { isOverlapError, type Prisma } from "@barbershop/db";
+import { isOverlapError, isRetryableError, withRetry, type Prisma } from "@barbershop/db";
 import {
   MINUTE_MS,
   bookingSchema,
@@ -33,9 +33,17 @@ function startCheckError(result: Exclude<StartCheck, "OK">, settings: ShopSettin
     case "SLOT_TAKEN":
       return new AppError(409, "SLOT_TAKEN", "Это время уже занято. Выберите другое.");
     case "TOO_SOON":
-      return new AppError(422, "TOO_SOON", `Записаться можно не позднее чем за ${settings.minNoticeMin} мин до начала.`);
+      return new AppError(
+        422,
+        "TOO_SOON",
+        `Записаться можно не позднее чем за ${settings.minNoticeMin} мин до начала.`,
+      );
     case "TOO_FAR":
-      return new AppError(422, "TOO_FAR", `Записаться можно не более чем на ${settings.bookingHorizonDays} дней вперёд.`);
+      return new AppError(
+        422,
+        "TOO_FAR",
+        `Записаться можно не более чем на ${settings.bookingHorizonDays} дней вперёд.`,
+      );
     case "OUTSIDE_WORKING_HOURS":
       return new AppError(422, "OUTSIDE_WORKING_HOURS", "В это время мастер не работает.");
   }
@@ -51,7 +59,12 @@ export function toBookingDto(b: BookingRow, settings: ShopSettings, now = new Da
     totalPrice: b.totalPrice,
     totalDurationMin: b.totalDurationMin,
     barber: { id: b.barber.id, name: b.barber.name },
-    services: b.services.map((s) => ({ serviceId: s.serviceId, name: s.name, price: s.price, durationMin: s.durationMin })),
+    services: b.services.map((s) => ({
+      serviceId: s.serviceId,
+      name: s.name,
+      price: s.price,
+      durationMin: s.durationMin,
+    })),
     client: { name: b.client.name, phone: b.client.phone },
     canChange: canChangeBooking(b, settings.cancelCutoffMin, now),
     cancelCutoffMin: settings.cancelCutoffMin,
@@ -91,7 +104,12 @@ export async function bookingsRoutes(app: FastifyInstance) {
     const settings = await loadSettings();
 
     // 2–6. Услуги, мастер, длительность, цена, расписание, исключения, текущие записи
-    const options = await loadBarberOptions({ serviceIds: body.serviceIds, barberId: body.barberId, from: date, to: date });
+    const options = await loadBarberOptions({
+      serviceIds: body.serviceIds,
+      barberId: body.barberId,
+      from: date,
+      to: date,
+    });
     if (options.length === 0) {
       throw new AppError(422, "BARBER_CANNOT_PERFORM", "Нет мастера, который выполняет все выбранные услуги");
     }
@@ -111,41 +129,50 @@ export async function bookingsRoutes(app: FastifyInstance) {
     // 8–9. Сохраняем в транзакции. Если за это время слот заняли — PostgreSQL вернёт 23P01.
     for (const option of candidates) {
       try {
-        const booking = await prisma.$transaction(async (tx) => {
-          // Клиент с сайта узнаётся по телефону. Имя берём из последней записи —
-          // человек мог в прошлый раз написать его иначе.
-          const existing = await tx.client.findFirst({
-            where: { phone: body.client.phone },
-            orderBy: { createdAt: "asc" },
-          });
-          const client = existing
-            ? existing.name === body.client.name
-              ? existing
-              : await tx.client.update({ where: { id: existing.id }, data: { name: body.client.name } })
-            : await tx.client.create({ data: { name: body.client.name, phone: body.client.phone } });
+        // withRetry: если два запроса на одно время «зависли» друг на друге (deadlock),
+        // PostgreSQL прервёт один — повторяем его, и он уже увидит чужую запись → 23P01 → следующий мастер / 409
+        const booking = await withRetry(() =>
+          prisma.$transaction(
+            async (tx) => {
+              // Клиент с сайта узнаётся по телефону. Имя берём из последней записи —
+              // человек мог в прошлый раз написать его иначе.
+              const existing = await tx.client.findFirst({
+                where: { phone: body.client.phone },
+                orderBy: { createdAt: "asc" },
+              });
+              const client = existing
+                ? existing.name === body.client.name
+                  ? existing
+                  : await tx.client.update({ where: { id: existing.id }, data: { name: body.client.name } })
+                : await tx.client.create({ data: { name: body.client.name, phone: body.client.phone } });
 
-          return tx.booking.create({
-            data: {
-              clientId: client.id,
-              barberId: option.barberId,
-              startsAt,
-              endsAt: new Date(startsAt.getTime() + option.durationMin * MINUTE_MS),
-              totalPrice: option.totalPrice,
-              totalDurationMin: option.durationMin,
-              status: "confirmed",
-              source: "web",
-              manageToken: newManageToken(),
-              // Снимок услуг: если цену потом поменяют, эта запись не изменится
-              services: { create: option.services },
+              return tx.booking.create({
+                data: {
+                  clientId: client.id,
+                  barberId: option.barberId,
+                  startsAt,
+                  endsAt: new Date(startsAt.getTime() + option.durationMin * MINUTE_MS),
+                  totalPrice: option.totalPrice,
+                  totalDurationMin: option.durationMin,
+                  status: "confirmed",
+                  source: "web",
+                  manageToken: newManageToken(),
+                  // Снимок услуг: если цену потом поменяют, эта запись не изменится
+                  services: { create: option.services },
+                },
+                include: bookingInclude,
+              });
             },
-            include: bookingInclude,
-          });
-        });
+            // по умолчанию 5 с — мало при медленной связи с облачной базой
+            { timeout: 15_000 },
+          ),
+        );
         // 10. Готово
         return reply.status(201).send(toBookingDto(booking, settings, now));
       } catch (error) {
-        // Слот заняли между проверкой и сохранением — пробуем следующего мастера (для «любого»)
-        if (isOverlapError(error)) continue;
+        // Слот заняли между проверкой и сохранением — пробуем следующего мастера (для «любого»).
+        // Если даже повторы упёрлись в deadlock — за это время явно идёт борьба, считаем его занятым.
+        if (isOverlapError(error) || isRetryableError(error)) continue;
         throw error;
       }
     }
@@ -198,18 +225,20 @@ export async function bookingsRoutes(app: FastifyInstance) {
     if (result !== "OK") throw startCheckError(result, settings);
 
     try {
-      await prisma.booking.update({
-        where: { id: booking.id },
-        data: {
-          startsAt,
-          endsAt: new Date(startsAt.getTime() + booking.totalDurationMin * MINUTE_MS),
-          // напоминания нужно будет отправить заново для нового времени (этап 8)
-          reminderDaySentAt: null,
-          reminder30mSentAt: null,
-        },
-      });
+      await withRetry(() =>
+        prisma.booking.update({
+          where: { id: booking.id },
+          data: {
+            startsAt,
+            endsAt: new Date(startsAt.getTime() + booking.totalDurationMin * MINUTE_MS),
+            // напоминания нужно будет отправить заново для нового времени (этап 8)
+            reminderDaySentAt: null,
+            reminder30mSentAt: null,
+          },
+        }),
+      );
     } catch (error) {
-      if (isOverlapError(error)) throw startCheckError("SLOT_TAKEN", settings);
+      if (isOverlapError(error) || isRetryableError(error)) throw startCheckError("SLOT_TAKEN", settings);
       throw error;
     }
     return toBookingDto(await findByToken(token), settings);

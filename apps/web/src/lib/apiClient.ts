@@ -66,6 +66,10 @@ export function createBooking(body: CreateBookingRequest) {
   return request<Booking>("/bookings", { method: "POST", body: JSON.stringify(body) });
 }
 
+export function fetchBooking(token: string) {
+  return request<Booking>(`/bookings/${encodeURIComponent(token)}`);
+}
+
 export function cancelBooking(token: string) {
   return request<Booking>(`/bookings/${encodeURIComponent(token)}/cancel`, { method: "POST" });
 }
