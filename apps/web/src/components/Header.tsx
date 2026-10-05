@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { shop } from "@/data/mock";
+import { shop } from "@/data/shop";
 import { CloseIcon, MenuIcon, ScissorsIcon } from "./Icons";
 import { ThemeToggle } from "./ThemeToggle";
 

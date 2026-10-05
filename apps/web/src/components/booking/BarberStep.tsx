@@ -1,6 +1,7 @@
-import { barbers } from "@/data/mock";
+import { barberAccent, canDoAll } from "@/lib/barber";
 import { plural } from "@/lib/format";
 import { CheckIcon, StarIcon, UsersIcon } from "../Icons";
+import { useCatalog } from "./catalog";
 
 type Props = {
   serviceIds: string[];
@@ -9,7 +10,8 @@ type Props = {
 };
 
 export function BarberStep({ serviceIds, selected, onSelect }: Props) {
-  const suitable = barbers.filter((b) => serviceIds.every((id) => b.serviceIds.includes(id)));
+  const { barbers } = useCatalog();
+  const suitable = barbers.filter((b) => canDoAll(b, serviceIds));
   const unsuitable = barbers.filter((b) => !suitable.includes(b));
 
   return (
@@ -50,7 +52,7 @@ export function BarberStep({ serviceIds, selected, onSelect }: Props) {
               aria-pressed={selected === barber.id}
               onClick={() => onSelect(barber.id)}
             >
-              <span className="barber-avatar" style={{ background: barber.accent }} aria-hidden="true">
+              <span className="barber-avatar" style={{ background: barberAccent(barber.id) }} aria-hidden="true">
                 {barber.name[0]}
               </span>
               <span className="option__body">
@@ -59,9 +61,11 @@ export function BarberStep({ serviceIds, selected, onSelect }: Props) {
                   {barber.role} · {barber.experienceYears}{" "}
                   {plural(barber.experienceYears, ["год", "года", "лет"])}
                 </span>
-                <span className="option__rating">
-                  <StarIcon size={13} /> {barber.rating.toFixed(1)}
-                </span>
+                {barber.rating !== null && (
+                  <span className="option__rating">
+                    <StarIcon size={13} /> {barber.rating.toFixed(1)}
+                  </span>
+                )}
               </span>
               <span className="option__check" aria-hidden="true">
                 {selected === barber.id && <CheckIcon size={14} />}

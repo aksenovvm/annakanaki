@@ -15,9 +15,10 @@
 - **Этап 1 — лендинг** (`/`);
 - **Этап 2 — интерфейс записи** (`/book`), пока без настоящего backend;
 - **Этап 3 — база данных** (`packages/db`): схема, миграция, тестовые данные.
-  Чтобы подключить свою базу Supabase — [docs/supabase.md](docs/supabase.md).
+  Чтобы подключить свою базу Supabase — [docs/supabase.md](docs/supabase.md);
+- **Этап 4 — backend** (`apps/api`): сайт берёт услуги, барберов и отзывы из базы через API.
 
-Данные пока моковые (`apps/web/src/data/mock.ts`), запросы к серверу имитирует `apps/web/src/lib/mockApi.ts`.
+Свободное время и создание записи пока тестовые (`apps/web/src/lib/mockApi.ts`) — настоящими они станут на этапе 5.
 
 Чтобы посмотреть состояния ошибок в форме записи:
 
@@ -29,18 +30,23 @@
 ```text
 apps/
   web/        Next.js — сайт: / и /book (позже /booking/[token], /admin)
+  api/        Fastify — REST API: /health, /api/v1/services, /api/v1/barbers, /api/v1/reviews/public
 packages/
   db/         Prisma: схема БД, миграции, seed, клиент для API
+  shared/     Zod-схемы и типы ответов API — общие для сервера и сайта
 docs/         PRD, SPEC, TASKS
 ```
 
 ## Запуск
 
-Нужен Node.js 20+.
+Нужен Node.js 20+ и два файла с настройками (см. [docs/supabase.md](docs/supabase.md)):
+
+- `packages/db/.env` — для миграций и seed;
+- `apps/api/.env` — для сервера (скопируйте из `apps/api/.env.example`).
 
 ```bash
 npm install
-npm run dev        # http://localhost:3000
+npm run dev        # сайт: http://localhost:3000, API: http://localhost:4000/health
 ```
 
 Другие команды:

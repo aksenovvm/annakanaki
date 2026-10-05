@@ -1,11 +1,12 @@
 import { formatFullDate } from "@/lib/date";
 import { formatDuration, formatPrice } from "@/lib/format";
 import { formatPhone } from "@/lib/phone";
+import { useCatalog } from "./catalog";
 import { summarize } from "./summary";
 import type { BookingDraft } from "./types";
 
 export function BookingSummary({ draft, showContacts = false }: { draft: BookingDraft; showContacts?: boolean }) {
-  const s = summarize(draft);
+  const s = summarize(draft, useCatalog());
   const empty = <span className="summary__empty">не выбрано</span>;
 
   return (

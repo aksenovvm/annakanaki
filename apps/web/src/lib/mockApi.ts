@@ -1,15 +1,20 @@
 /**
- * Этап 2: «ненастоящий» API.
+ * «Ненастоящая» часть API: свободное время и создание записи.
+ * (Услуги и барберы уже приходят из настоящего API — см. lib/api.ts.)
  * Функции возвращают Promise и ждут немного, как будто ходят на сервер,
  * поэтому интерфейс уже умеет показывать загрузку и ошибки.
- * На этапах 4–5 их тела заменятся на fetch к `/api/v1/...`, а сигнатуры останутся.
+ * На этапе 5 их тела заменятся на fetch к `/api/v1/availability` и `/api/v1/bookings`.
  *
  * Для проверки UI-состояний можно открыть:
  *   /book?simulate=error       — ошибка загрузки слотов
  *   /book?simulate=slot-taken  — слот «заняли» во время подтверждения (409 SLOT_TAKEN)
  */
-import { barbers, mockSlotTimes, services } from "@/data/mock";
+import type { Catalog } from "@/components/booking/catalog";
+import { canDoAll } from "./barber";
 import { dayOfMonth, todayInShop } from "./date";
+
+/** Тестовые свободные слоты (время по Ташкенту). На этапе 5 их будет рассчитывать backend. */
+const mockSlotTimes = ["10:00", "11:00", "12:00", "14:00", "15:00"];
 
 export type Simulate = "error" | "slot-taken" | null;
 
@@ -57,8 +62,8 @@ export async function getAvailableSlots(params: {
   }
 
   // Чтобы увидеть пустое состояние: у каждого мастера часть дней «полностью занята».
-  const barberIndex = Math.max(0, barbers.findIndex((b) => b.id === params.barberId));
-  if ((dayOfMonth(params.date) + barberIndex) % 5 === 0) return [];
+  const barberShift = params.barberId.charCodeAt(0) % 5;
+  if ((dayOfMonth(params.date) + barberShift) % 5 === 0) return [];
 
   // Сегодня нельзя записаться на прошедшее время или ближе чем за MIN_NOTICE_MIN минут.
   if (params.date === todayInShop()) {
@@ -84,7 +89,11 @@ export type BookingResult = {
   totalDurationMin: number;
 };
 
-export async function createBooking(req: BookingRequest, simulate?: Simulate): Promise<BookingResult> {
+export async function createBooking(
+  req: BookingRequest,
+  { services, barbers }: Catalog,
+  simulate?: Simulate,
+): Promise<BookingResult> {
   await wait(900);
   if (simulate === "slot-taken") {
     throw new ApiError("SLOT_TAKEN", "Это время только что заняли");
@@ -93,7 +102,7 @@ export async function createBooking(req: BookingRequest, simulate?: Simulate): P
   // Для «Любой свободный» сервер сам выберет мастера. Здесь — первый подходящий.
   const barberId =
     req.barberId === "any"
-      ? barbers.find((b) => req.serviceIds.every((id) => b.serviceIds.includes(id)))!.id
+      ? barbers.find((b) => canDoAll(b, req.serviceIds))!.id
       : req.barberId;
 
   const chosen = services.filter((s) => req.serviceIds.includes(s.id));

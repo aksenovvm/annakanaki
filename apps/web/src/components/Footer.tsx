@@ -1,4 +1,4 @@
-import { shop } from "@/data/mock";
+import { shop } from "@/data/shop";
 
 export function Footer() {
   return (

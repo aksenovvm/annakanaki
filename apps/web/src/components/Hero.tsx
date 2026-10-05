@@ -1,23 +1,38 @@
 import Link from "next/link";
-import { barbers, reviews, shop } from "@/data/mock";
+import type { Barber } from "@barbershop/shared";
+import { shop } from "@/data/shop";
+import type { Loaded } from "@/lib/api";
+import { plural } from "@/lib/format";
 import { ScissorsIcon, StarIcon } from "./Icons";
 
-export function Hero() {
-  const avgRating = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
-  const maxExperience = Math.max(...barbers.map((b) => b.experienceYears));
-  const stats = [
-    { value: barbers.length, label: "мастера в команде" },
-    { value: `${maxExperience}+`, label: "лет опыта" },
-    { value: avgRating.toFixed(1), label: "средняя оценка" },
-  ];
+/** Средняя оценка по всем отзывам: рейтинг каждого мастера с весом «число его отзывов» */
+function overallRating(barbers: Barber[]): number | null {
+  const total = barbers.reduce((sum, b) => sum + b.reviewsCount, 0);
+  if (total === 0) return null;
+  return barbers.reduce((sum, b) => sum + (b.rating ?? 0) * b.reviewsCount, 0) / total;
+}
+
+export function Hero({ barbers }: { barbers: Loaded<Barber[]> }) {
+  const list = barbers.ok ? barbers.data : [];
+  const avgRating = overallRating(list);
+  const stats =
+    list.length > 0
+      ? [
+          { value: list.length, label: plural(list.length, ["мастер", "мастера", "мастеров"]) + " в команде" },
+          { value: `${Math.max(...list.map((b) => b.experienceYears))}+`, label: "лет опыта" },
+          ...(avgRating !== null ? [{ value: avgRating.toFixed(1), label: "средняя оценка" }] : []),
+        ]
+      : [];
 
   return (
     <section className="hero">
       <div className="container hero__grid">
         <div>
-          <span className="hero__badge">
-            <StarIcon size={14} /> {avgRating.toFixed(1)} · отзывы клиентов
-          </span>
+          {avgRating !== null && (
+            <span className="hero__badge">
+              <StarIcon size={14} /> {avgRating.toFixed(1)} · отзывы клиентов
+            </span>
+          )}
           <h1 className="hero__title">
             Стрижка, после которой <em>хочется вернуться</em>
           </h1>
@@ -32,14 +47,16 @@ export function Hero() {
               Услуги и цены
             </Link>
           </div>
-          <div className="hero__stats">
-            {stats.map((stat) => (
-              <div key={stat.label}>
-                <div className="hero__stat-value">{stat.value}</div>
-                <div className="hero__stat-label">{stat.label}</div>
-              </div>
-            ))}
-          </div>
+          {stats.length > 0 && (
+            <div className="hero__stats">
+              {stats.map((stat) => (
+                <div key={stat.label}>
+                  <div className="hero__stat-value">{stat.value}</div>
+                  <div className="hero__stat-label">{stat.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="hero__visual" aria-hidden="true">

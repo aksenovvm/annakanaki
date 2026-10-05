@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope } from "next/font/google";
-import { shop } from "@/data/mock";
+import { shop } from "@/data/shop";
 import "./globals.css";
 
 const manrope = Manrope({

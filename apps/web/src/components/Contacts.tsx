@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { shop } from "@/data/mock";
+import { shop } from "@/data/shop";
 import { ClockIcon, MapPinIcon, PhoneIcon, SendIcon } from "./Icons";
 import { SectionHead } from "./SectionHead";
 

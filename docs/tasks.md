@@ -185,19 +185,19 @@ const reviews = [...]
 
 ## Задачи
 
-- [ ] Создать `apps/api`.
-- [ ] Подключить Fastify.
-- [ ] Подключить TypeScript.
-- [ ] Подключить Zod.
-- [ ] Подключить Prisma.
-- [ ] Сделать `GET /health`.
-- [ ] Сделать `GET /api/v1/services`.
-- [ ] Сделать `GET /api/v1/barbers`.
-- [ ] Сделать `GET /api/v1/barbers/:id`.
-- [ ] Подключить frontend к реальным `/services`.
-- [ ] Подключить frontend к реальным `/barbers`.
-- [ ] Настроить обработку ошибок.
-- [ ] Настроить CORS для разработки.
+- [x] Создать `apps/api`.
+- [x] Подключить Fastify.
+- [x] Подключить TypeScript.
+- [x] Подключить Zod.
+- [x] Подключить Prisma.
+- [x] Сделать `GET /health`.
+- [x] Сделать `GET /api/v1/services`.
+- [x] Сделать `GET /api/v1/barbers`.
+- [x] Сделать `GET /api/v1/barbers/:id`.
+- [x] Подключить frontend к реальным `/services`.
+- [x] Подключить frontend к реальным `/barbers`.
+- [x] Настроить обработку ошибок.
+- [x] Настроить CORS для разработки.
 
 ## Готово, когда
 
@@ -214,6 +214,24 @@ Prisma
    ↓
 Supabase
 ```
+
+## Статус: ✅ выполнен
+
+- Сервер — `apps/api` (Fastify 5 + Zod 4 + Prisma через `@barbershop/db`), порт 4000.
+  - `GET /health` — сервер и связь с базой (`503`, если база недоступна);
+  - `GET /api/v1/services` — активные услуги;
+  - `GET /api/v1/barbers` — активные барберы: рейтинг из отзывов, услуги с ценой мастера;
+  - `GET /api/v1/barbers/:id` — плюс портфолио и недельный график с обедами;
+  - `GET /api/v1/reviews/public` — опубликованные отзывы (сверх плана этапа: из spec, чтобы весь лендинг брал данные из БД).
+- Ошибки — в одном формате `{ code, message, details? }`: `400 VALIDATION_ERROR`, `404 NOT_FOUND` / `BARBER_NOT_FOUND`,
+  `500 INTERNAL_ERROR` (подробности только в логе сервера).
+- CORS: разрешены только адреса из `CORS_ORIGINS` (по умолчанию `http://localhost:3000`).
+- Общий пакет `packages/shared`: Zod-схемы ответов API и TypeScript-типы для сайта.
+- Сайт: главная и `/book` получают услуги, барберов и отзывы из API при каждом открытии страницы;
+  если API или база недоступны — показывается понятное сообщение вместо секции.
+- Локальные массивы `services` / `barbers` / `reviews` удалены. В коде остались только контакты (`data/shop.ts`)
+  и тестовые слоты (`lib/mockApi.ts`, до этапа 5).
+- `npm run dev` запускает сайт и API вместе.
 
 ---
 

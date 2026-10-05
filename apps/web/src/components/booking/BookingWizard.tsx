@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { barbers, services } from "@/data/mock";
+import { canDoAll } from "@/lib/barber";
 import { toUtcIso } from "@/lib/date";
 import { formatDuration, formatPrice } from "@/lib/format";
 import { ApiError, createBooking, type Simulate } from "@/lib/mockApi";
@@ -10,6 +10,7 @@ import { isValidPhone, phoneDigits, toE164 } from "@/lib/phone";
 import { ArrowLeftIcon } from "../Icons";
 import { BarberStep } from "./BarberStep";
 import { BookingSummary } from "./BookingSummary";
+import { CatalogProvider, type Catalog } from "./catalog";
 import { ConfirmStep } from "./ConfirmStep";
 import { ContactsStep } from "./ContactsStep";
 import { DateTimeStep } from "./DateTimeStep";
@@ -32,8 +33,8 @@ function validateContacts(draft: BookingDraft) {
   return errors;
 }
 
-/** Начальное состояние из ссылки: /book?barber=timur или /book?service=haircut */
-function draftFromParams(params: URLSearchParams): { draft: BookingDraft; step: number } {
+/** Начальное состояние из ссылки: /book?barber=<id> или /book?service=<id> */
+function draftFromParams(params: URLSearchParams, { services, barbers }: Catalog): { draft: BookingDraft; step: number } {
   const draft = { ...emptyDraft };
   const serviceId = params.get("service");
   if (serviceId && services.some((s) => s.id === serviceId)) draft.serviceIds = [serviceId];
@@ -42,11 +43,11 @@ function draftFromParams(params: URLSearchParams): { draft: BookingDraft; step: 
   return { draft, step: draft.serviceIds.length > 0 ? STEP_BARBER : STEP_SERVICE };
 }
 
-export function BookingWizard() {
+export function BookingWizard({ catalog }: { catalog: Catalog }) {
   const params = useSearchParams();
   const simulate = (params.get("simulate") as Simulate) ?? null;
 
-  const [initial] = useState(() => draftFromParams(params));
+  const [initial] = useState(() => draftFromParams(params, catalog));
   const [draft, setDraft] = useState<BookingDraft>(initial.draft);
   const [step, setStep] = useState(initial.step);
   const [contactErrors, setContactErrors] = useState<{ name?: string; phone?: string }>({});
@@ -76,8 +77,8 @@ export function BookingWizard() {
         ? d.serviceIds.filter((id) => id !== serviceId)
         : [...d.serviceIds, serviceId];
       // Если выбранный мастер не делает новый набор услуг — сбрасываем его выбор.
-      const barber = barbers.find((b) => b.id === d.barberId);
-      const barberStillOk = !barber || serviceIds.every((id) => barber.serviceIds.includes(id));
+      const barber = catalog.barbers.find((b) => b.id === d.barberId);
+      const barberStillOk = !barber || canDoAll(barber, serviceIds);
       return { ...d, serviceIds, barberId: barberStillOk ? d.barberId : null, time: null };
     });
   }
@@ -110,6 +111,7 @@ export function BookingWizard() {
           startsAt: toUtcIso(draft.date!, draft.time!),
           client: { name: draft.name.trim(), phone: toE164(draft.phone) },
         },
+        catalog,
         simulate,
       );
       // Для «Любой свободный» показываем мастера, которого выбрал «сервер».
@@ -158,13 +160,15 @@ export function BookingWizard() {
 
   if (done) {
     return (
-      <div className="booking container" ref={topRef}>
-        <SuccessScreen draft={draft} onBookAgain={restart} />
-      </div>
+      <CatalogProvider catalog={catalog}>
+        <div className="booking container" ref={topRef}>
+          <SuccessScreen draft={draft} onBookAgain={restart} />
+        </div>
+      </CatalogProvider>
     );
   }
 
-  const totals = summarize(draft);
+  const totals = summarize(draft, catalog);
   const nextLabel = step === STEP_CONFIRM ? "Записаться" : "Далее";
   const nextButton = (extraClass = "") => (
     <button
@@ -185,80 +189,82 @@ export function BookingWizard() {
   );
 
   return (
-    <div className="booking container" ref={topRef}>
-      <ol className="stepper" aria-label="Шаги записи">
-        {STEPS.map((label, i) => (
-          <li
-            key={label}
-            className="stepper__item"
-            data-state={i < step ? "done" : i === step ? "current" : "todo"}
-            aria-current={i === step ? "step" : undefined}
-          >
-            <span className="stepper__dot">{i + 1}</span>
-            <span className="stepper__label">{label}</span>
-          </li>
-        ))}
-      </ol>
-      <p className="stepper-caption">
-        Шаг {step + 1} из {STEPS.length} · {STEPS[step]}
-      </p>
+    <CatalogProvider catalog={catalog}>
+      <div className="booking container" ref={topRef}>
+        <ol className="stepper" aria-label="Шаги записи">
+          {STEPS.map((label, i) => (
+            <li
+              key={label}
+              className="stepper__item"
+              data-state={i < step ? "done" : i === step ? "current" : "todo"}
+              aria-current={i === step ? "step" : undefined}
+            >
+              <span className="stepper__dot">{i + 1}</span>
+              <span className="stepper__label">{label}</span>
+            </li>
+          ))}
+        </ol>
+        <p className="stepper-caption">
+          Шаг {step + 1} из {STEPS.length} · {STEPS[step]}
+        </p>
 
-      <div className="booking__layout">
-        <section className="booking__main" aria-live="polite">
-          {step > STEP_SERVICE && (
-            <button type="button" className="back-link" onClick={back} disabled={submitting}>
-              <ArrowLeftIcon size={18} /> Назад
-            </button>
-          )}
+        <div className="booking__layout">
+          <section className="booking__main" aria-live="polite">
+            {step > STEP_SERVICE && (
+              <button type="button" className="back-link" onClick={back} disabled={submitting}>
+                <ArrowLeftIcon size={18} /> Назад
+              </button>
+            )}
 
-          {step === STEP_SERVICE && <ServiceStep selected={draft.serviceIds} onToggle={toggleService} />}
-          {step === STEP_BARBER && (
-            <BarberStep
-              serviceIds={draft.serviceIds}
-              selected={draft.barberId}
-              onSelect={(barberId) => update({ barberId, time: null })}
-            />
-          )}
-          {step === STEP_DATETIME && draft.barberId && (
-            <DateTimeStep
-              serviceIds={draft.serviceIds}
-              barberId={draft.barberId}
-              date={draft.date}
-              time={draft.time}
-              simulate={simulate}
-              onDateChange={onDateChange}
-              onTimeChange={onTimeChange}
-            />
-          )}
-          {step === STEP_CONTACTS && (
-            <ContactsStep
-              name={draft.name}
-              phone={draft.phone}
-              errors={showContactErrors ? contactErrors : {}}
-              onChange={onContactChange}
-            />
-          )}
-          {step === STEP_CONFIRM && (
-            <ConfirmStep draft={draft} error={submitError} onPickAnotherTime={pickAnotherTime} />
-          )}
-        </section>
+            {step === STEP_SERVICE && <ServiceStep selected={draft.serviceIds} onToggle={toggleService} />}
+            {step === STEP_BARBER && (
+              <BarberStep
+                serviceIds={draft.serviceIds}
+                selected={draft.barberId}
+                onSelect={(barberId) => update({ barberId, time: null })}
+              />
+            )}
+            {step === STEP_DATETIME && draft.barberId && (
+              <DateTimeStep
+                serviceIds={draft.serviceIds}
+                barberId={draft.barberId}
+                date={draft.date}
+                time={draft.time}
+                simulate={simulate}
+                onDateChange={onDateChange}
+                onTimeChange={onTimeChange}
+              />
+            )}
+            {step === STEP_CONTACTS && (
+              <ContactsStep
+                name={draft.name}
+                phone={draft.phone}
+                errors={showContactErrors ? contactErrors : {}}
+                onChange={onContactChange}
+              />
+            )}
+            {step === STEP_CONFIRM && (
+              <ConfirmStep draft={draft} error={submitError} onPickAnotherTime={pickAnotherTime} />
+            )}
+          </section>
 
-        {/* Десктоп: итог записи сбоку */}
-        <aside className="booking__aside card" aria-label="Ваша запись">
-          <h2 className="booking__aside-title">Ваша запись</h2>
-          <BookingSummary draft={draft} />
-          {nextButton("btn--block")}
-        </aside>
-      </div>
-
-      {/* Телефон: итог и кнопка прилеплены к низу экрана */}
-      <div className="booking__bar">
-        <div className="booking__bar-total">
-          <strong>{formatPrice(totals.totalPrice)}</strong>
-          <span>{totals.totalDurationMin > 0 ? formatDuration(totals.totalDurationMin) : "Выберите услугу"}</span>
+          {/* Десктоп: итог записи сбоку */}
+          <aside className="booking__aside card" aria-label="Ваша запись">
+            <h2 className="booking__aside-title">Ваша запись</h2>
+            <BookingSummary draft={draft} />
+            {nextButton("btn--block")}
+          </aside>
         </div>
-        {nextButton()}
+
+        {/* Телефон: итог и кнопка прилеплены к низу экрана */}
+        <div className="booking__bar">
+          <div className="booking__bar-total">
+            <strong>{formatPrice(totals.totalPrice)}</strong>
+            <span>{totals.totalDurationMin > 0 ? formatDuration(totals.totalDurationMin) : "Выберите услугу"}</span>
+          </div>
+          {nextButton()}
+        </div>
       </div>
-    </div>
+    </CatalogProvider>
   );
 }

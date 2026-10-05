@@ -913,3 +913,21 @@ button {
     padding-bottom: 0;
   }
 }
+
+/* Секция не загрузилась */
+.load-error {
+  padding: 32px 20px;
+  border: 1.5px dashed color-mix(in srgb, #d9534f 50%, var(--border));
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+.load-error__title {
+  font-weight: 700;
+}
+
+.load-error__text {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 15px;
+}
