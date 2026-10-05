@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { canDoAll } from "@/lib/barber";
-import { formatDuration, formatPrice } from "@/lib/format";
+import { formatDurationRange, formatPriceRange } from "@/lib/format";
 import type { Slot } from "@barbershop/shared";
 import { ApiError, createBooking } from "@/lib/apiClient";
 import { isValidPhone, phoneDigits, toE164 } from "@/lib/phone";
@@ -240,8 +240,8 @@ export function BookingWizard({ catalog }: { catalog: Catalog }) {
         {/* Телефон: итог и кнопка прилеплены к низу экрана */}
         <div className="booking__bar">
           <div className="booking__bar-total">
-            <strong>{formatPrice(totals.totalPrice)}</strong>
-            <span>{totals.totalDurationMin > 0 ? formatDuration(totals.totalDurationMin) : "Выберите услугу"}</span>
+            <strong>{formatPriceRange(totals.price)}</strong>
+            <span>{totals.durationMin.max > 0 ? formatDurationRange(totals.durationMin) : "Выберите услугу"}</span>
           </div>
           {nextButton()}
         </div>

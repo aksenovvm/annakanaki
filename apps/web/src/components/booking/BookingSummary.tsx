@@ -1,5 +1,5 @@
 import { formatFullDate } from "@/lib/date";
-import { formatDuration, formatPrice } from "@/lib/format";
+import { formatDurationRange, formatPriceRange } from "@/lib/format";
 import { formatPhone } from "@/lib/phone";
 import { useCatalog } from "./catalog";
 import { summarize } from "./summary";
@@ -34,10 +34,13 @@ export function BookingSummary({ draft, showContacts = false }: { draft: Booking
       <div className="summary__row summary__row--total">
         <dt>Итого</dt>
         <dd>
-          {formatPrice(s.totalPrice)}
-          {s.totalDurationMin > 0 && <span className="summary__duration"> · {formatDuration(s.totalDurationMin)}</span>}
+          {formatPriceRange(s.price)}
+          {s.durationMin.max > 0 && <span className="summary__duration"> · {formatDurationRange(s.durationMin)}</span>}
         </dd>
       </div>
+      {s.price.min !== s.price.max && (
+        <p className="summary__hint">Цена зависит от мастера — точная будет на странице записи.</p>
+      )}
     </dl>
   );
 }

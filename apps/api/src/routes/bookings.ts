@@ -112,10 +112,17 @@ export async function bookingsRoutes(app: FastifyInstance) {
     for (const option of candidates) {
       try {
         const booking = await prisma.$transaction(async (tx) => {
-          // Клиент с сайта узнаётся по телефону
-          const client =
-            (await tx.client.findFirst({ where: { phone: body.client.phone }, orderBy: { createdAt: "asc" } })) ??
-            (await tx.client.create({ data: { name: body.client.name, phone: body.client.phone } }));
+          // Клиент с сайта узнаётся по телефону. Имя берём из последней записи —
+          // человек мог в прошлый раз написать его иначе.
+          const existing = await tx.client.findFirst({
+            where: { phone: body.client.phone },
+            orderBy: { createdAt: "asc" },
+          });
+          const client = existing
+            ? existing.name === body.client.name
+              ? existing
+              : await tx.client.update({ where: { id: existing.id }, data: { name: body.client.name } })
+            : await tx.client.create({ data: { name: body.client.name, phone: body.client.phone } });
 
           return tx.booking.create({
             data: {

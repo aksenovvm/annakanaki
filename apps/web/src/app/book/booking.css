@@ -782,3 +782,16 @@
   background: #c0392b;
   color: #fff;
 }
+
+.option__meta-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+}
+
+.summary__hint {
+  margin: -4px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}

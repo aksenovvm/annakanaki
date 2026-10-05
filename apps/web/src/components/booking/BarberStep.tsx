@@ -1,7 +1,8 @@
 import { barberAccent, canDoAll } from "@/lib/barber";
-import { plural } from "@/lib/format";
+import { formatPrice, formatPriceRange, plural } from "@/lib/format";
 import { CheckIcon, StarIcon, UsersIcon } from "../Icons";
 import { useCatalog } from "./catalog";
+import { totalsForBarber } from "./summary";
 
 type Props = {
   serviceIds: string[];
@@ -10,8 +11,10 @@ type Props = {
 };
 
 export function BarberStep({ serviceIds, selected, onSelect }: Props) {
-  const { barbers } = useCatalog();
+  const catalog = useCatalog();
+  const { barbers } = catalog;
   const suitable = barbers.filter((b) => canDoAll(b, serviceIds));
+  const prices = suitable.map((b) => totalsForBarber(b, serviceIds, catalog).price);
   const unsuitable = barbers.filter((b) => !suitable.includes(b));
 
   return (
@@ -38,6 +41,11 @@ export function BarberStep({ serviceIds, selected, onSelect }: Props) {
             <span className="option__body">
               <span className="option__title">Любой свободный</span>
               <span className="option__text">Подберём мастера на удобное вам время</span>
+              {prices.length > 0 && (
+                <span className="option__meta-row">
+                  <strong>{formatPriceRange({ min: Math.min(...prices), max: Math.max(...prices) })}</strong>
+                </span>
+              )}
             </span>
             <span className="option__check" aria-hidden="true">
               {selected === "any" && <CheckIcon size={14} />}
@@ -61,11 +69,14 @@ export function BarberStep({ serviceIds, selected, onSelect }: Props) {
                   {barber.role} · {barber.experienceYears}{" "}
                   {plural(barber.experienceYears, ["год", "года", "лет"])}
                 </span>
-                {barber.rating !== null && (
-                  <span className="option__rating">
-                    <StarIcon size={13} /> {barber.rating.toFixed(1)}
-                  </span>
-                )}
+                <span className="option__meta-row">
+                  <strong>{formatPrice(totalsForBarber(barber, serviceIds, catalog).price)}</strong>
+                  {barber.rating !== null && (
+                    <span className="option__rating">
+                      <StarIcon size={13} /> {barber.rating.toFixed(1)}
+                    </span>
+                  )}
+                </span>
               </span>
               <span className="option__check" aria-hidden="true">
                 {selected === barber.id && <CheckIcon size={14} />}

@@ -33,3 +33,15 @@ export function plural(n: number, forms: [string, string, string]): string {
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return forms[1];
   return forms[2];
 }
+
+/** 150000–180000 → «150 000 – 180 000 сум», одинаковые → «150 000 сум» */
+export function formatPriceRange({ min, max }: { min: number; max: number }): string {
+  if (min === max) return formatPrice(min);
+  return `${priceFormatter.format(min)} – ${formatPrice(max)}`;
+}
+
+/** 60–90 → «1 ч – 1 ч 30 мин» */
+export function formatDurationRange({ min, max }: { min: number; max: number }): string {
+  if (min === max) return formatDuration(min);
+  return `${formatDuration(min)} – ${formatDuration(max)}`;
+}

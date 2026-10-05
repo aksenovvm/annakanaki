@@ -23,12 +23,17 @@ const TEST_PHONE_PREFIX = "+998000000";
 let phoneCounter = 100;
 const nextPhone = () => `${TEST_PHONE_PREFIX}${phoneCounter++}`;
 
+/** Проверка кода ответа: при ошибке показывает тело ответа — так сразу видно причину */
+function expectStatus(res: { statusCode: number; body: string }, status: number) {
+  expect(res.statusCode, `ответ сервера: ${res.body}`).toBe(status);
+}
+
 async function freeSlots(date = testDate): Promise<Slot[]> {
   const res = await app.inject({
     method: "GET",
     url: `/api/v1/availability?serviceIds=${serviceId}&barberId=${barberId}&date=${date}`,
   });
-  expect(res.statusCode).toBe(200);
+  expectStatus(res, 200);
   return res.json().slots;
 }
 
@@ -76,7 +81,7 @@ describe("защита от двойной записи", () => {
 
     const [a, b] = await Promise.all([book(slot.startsAt), book(slot.startsAt)]);
 
-    expect([a.statusCode, b.statusCode].sort()).toEqual([201, 409]);
+    expect([a.statusCode, b.statusCode].sort(), `ответы: ${a.body} | ${b.body}`).toEqual([201, 409]);
     const conflict = a.statusCode === 409 ? a : b;
     expect(conflict.json().code).toBe("SLOT_TAKEN");
   });
@@ -87,16 +92,17 @@ describe("защита от двойной записи", () => {
 
     const results = await Promise.all(Array.from({ length: 5 }, () => book(slot.startsAt)));
     const codes = results.map((r) => r.statusCode);
+    const bodies = results.map((r) => r.body).join(" | ");
 
-    expect(codes.filter((c) => c === 201)).toHaveLength(1);
-    expect(codes.filter((c) => c === 409)).toHaveLength(4);
+    expect(codes.filter((c) => c === 201), bodies).toHaveLength(1);
+    expect(codes.filter((c) => c === 409), bodies).toHaveLength(4);
   });
 
   it("база сама не даёт сохранить пересекающуюся запись в обход API (23P01)", async () => {
     const { isOverlapError } = await import("@barbershop/db");
     const [slot] = await freeSlots();
     const res = await book(slot.startsAt);
-    expect(res.statusCode).toBe(201);
+    expectStatus(res, 201);
     const existing: Booking = res.json();
 
     const client = await prisma.client.create({ data: { name: "Тест", phone: nextPhone() } });
@@ -122,7 +128,7 @@ describe("запись, перенос и отмена", () => {
     const slots = await freeSlots();
     const first = slots[1];
     const created = await book(first.startsAt);
-    expect(created.statusCode).toBe(201);
+    expectStatus(created, 201);
     const booking: Booking = created.json();
     expect(booking.status).toBe("confirmed");
     expect(booking.canChange).toBe(true);
@@ -133,7 +139,7 @@ describe("запись, перенос и отмена", () => {
 
     // Запись открывается по токену
     const view = await app.inject({ method: "GET", url: `/api/v1/bookings/${booking.manageToken}` });
-    expect(view.statusCode).toBe(200);
+    expectStatus(view, 200);
     expect(view.json().id).toBe(booking.id);
 
     // Перенос на другое свободное время
@@ -143,7 +149,7 @@ describe("запись, перенос и отмена", () => {
       url: `/api/v1/bookings/${booking.manageToken}/reschedule`,
       payload: { startsAt: target.startsAt },
     });
-    expect(moved.statusCode).toBe(200);
+    expectStatus(moved, 200);
     expect(moved.json().startsAt).toBe(target.startsAt);
     // Старое время снова свободно, новое — занято
     const after = (await freeSlots()).map((s) => s.startsAt);
@@ -152,14 +158,14 @@ describe("запись, перенос и отмена", () => {
 
     // Отмена
     const cancelled = await app.inject({ method: "POST", url: `/api/v1/bookings/${booking.manageToken}/cancel` });
-    expect(cancelled.statusCode).toBe(200);
+    expectStatus(cancelled, 200);
     expect(cancelled.json().status).toBe("cancelled");
     expect(cancelled.json().canChange).toBe(false);
     expect((await freeSlots()).map((s) => s.startsAt)).toContain(target.startsAt);
 
     // Повторная отмена — 409
     const again = await app.inject({ method: "POST", url: `/api/v1/bookings/${booking.manageToken}/cancel` });
-    expect(again.statusCode).toBe(409);
+    expectStatus(again, 409);
     expect(again.json().code).toBe("BOOKING_NOT_ACTIVE");
   });
 
@@ -187,7 +193,7 @@ describe("запись, перенос и отмена", () => {
       url: `/api/v1/bookings/${booking.manageToken}/reschedule`,
       payload: { startsAt: later },
     });
-    expect(moved.statusCode).toBe(200);
+    expectStatus(moved, 200);
   });
 
   it("перенос на занятое время — 409 SLOT_TAKEN", async () => {
@@ -200,7 +206,7 @@ describe("запись, перенос и отмена", () => {
       url: `/api/v1/bookings/${b.manageToken}/reschedule`,
       payload: { startsAt: a.startsAt },
     });
-    expect(res.statusCode).toBe(409);
+    expectStatus(res, 409);
     expect(res.json().code).toBe("SLOT_TAKEN");
   });
 
@@ -227,7 +233,7 @@ describe("запись, перенос и отмена", () => {
     const current = await prisma.booking.findUniqueOrThrow({ where: { id: row.id } });
     const res = await app.inject({ method: "POST", url: `/api/v1/bookings/${row.manageToken}/cancel` });
     if (current.status === "confirmed") {
-      expect(res.statusCode).toBe(422);
+      expectStatus(res, 422);
       expect(res.json().code).toBe("TOO_LATE_TO_CHANGE");
     } else {
       // время оказалось занято настоящей записью — тогда запись не confirmed, и ответ 409
@@ -239,13 +245,13 @@ describe("запись, перенос и отмена", () => {
 describe("проверки при создании", () => {
   it("неверные данные — 400 VALIDATION_ERROR", async () => {
     const res = await app.inject({ method: "POST", url: "/api/v1/bookings", payload: { serviceIds: [] } });
-    expect(res.statusCode).toBe(400);
+    expectStatus(res, 400);
     expect(res.json().code).toBe("VALIDATION_ERROR");
   });
 
   it("ночью мастер не работает — 422 OUTSIDE_WORKING_HOURS", async () => {
     const res = await book(`${testDate}T03:00:00+05:00`);
-    expect(res.statusCode).toBe(422);
+    expectStatus(res, 422);
     expect(res.json().code).toBe("OUTSIDE_WORKING_HOURS");
   });
 
@@ -261,7 +267,7 @@ describe("проверки при создании", () => {
     });
     const slot: Slot = res.json().slots.at(-4);
     const created = await book(slot.startsAt, "any");
-    expect(created.statusCode).toBe(201);
+    expectStatus(created, 201);
     expect(created.json().barber.id).toMatch(/^[0-9a-f-]{36}$/);
   });
 });
