@@ -45,7 +45,19 @@ async function main() {
   console.log(`\nНастройки (${settings.length}):`);
   for (const s of settings) console.log(`  ${s.key} = ${JSON.stringify(s.value)}`);
 
-  console.log(`\nЗаписей: ${await prisma.booking.count()}, отзывов: ${await prisma.review.count()}\n`);
+  console.log(`\nЗаписей: ${await prisma.booking.count()}, отзывов: ${await prisma.review.count()}`);
+
+  const latest = await prisma.booking.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 5,
+    include: { client: true, barber: true },
+  });
+  console.log("\nПоследние записи (новые сверху):");
+  const fmt = (d: Date) => d.toLocaleString("ru-RU", { timeZone: "Asia/Tashkent", dateStyle: "short", timeStyle: "short" });
+  for (const b of latest) {
+    console.log(`  ${fmt(b.startsAt)} — ${b.barber.name}, клиент ${b.client.name}, статус ${b.status}, создана ${fmt(b.createdAt)}`);
+  }
+  console.log();
 }
 
 main()
