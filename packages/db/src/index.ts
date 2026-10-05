@@ -23,3 +23,16 @@ export function timeToString(value: Date): string {
 export function timeFromString(value: string): Date {
   return new Date(`1970-01-01T${value}:00Z`);
 }
+
+/**
+ * Это ошибка ограничения bookings_no_overlap? (PostgreSQL код 23P01 — exclusion_violation)
+ * Значит, кто-то успел занять пересекающееся время — API ответит 409 SLOT_TAKEN.
+ */
+export function isOverlapError(error: unknown): boolean {
+  const meta = (error as { meta?: { driverAdapterError?: { cause?: { originalCode?: string; code?: string } } } })
+    ?.meta;
+  const cause = meta?.driverAdapterError?.cause;
+  if (cause?.originalCode === "23P01" || cause?.code === "23P01") return true;
+  // запасной вариант — по тексту ошибки
+  return error instanceof Error && error.message.includes("23P01");
+}

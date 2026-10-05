@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 };
 
 export default async function BookPage() {
-  // Услуги и барберы — из API. Свободное время пока тестовое (этап 5).
+  // Услуги и барберы загружаем на сервере, свободное время форма запрашивает сама из браузера
   const [services, barbers] = await Promise.all([load(getServices()), load(getBarbers())]);
 
   return (

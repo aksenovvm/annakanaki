@@ -1,22 +1,21 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { canDoAll } from "@/lib/barber";
-import { toUtcIso } from "@/lib/date";
 import { formatDuration, formatPrice } from "@/lib/format";
-import { ApiError, createBooking, type Simulate } from "@/lib/mockApi";
+import type { Slot } from "@barbershop/shared";
+import { ApiError, createBooking } from "@/lib/apiClient";
 import { isValidPhone, phoneDigits, toE164 } from "@/lib/phone";
 import { ArrowLeftIcon } from "../Icons";
 import { BarberStep } from "./BarberStep";
 import { BookingSummary } from "./BookingSummary";
 import { CatalogProvider, type Catalog } from "./catalog";
-import { ConfirmStep } from "./ConfirmStep";
+import { ConfirmStep, type SubmitError } from "./ConfirmStep";
 import { ContactsStep } from "./ContactsStep";
 import { DateTimeStep } from "./DateTimeStep";
 import { ServiceStep } from "./ServiceStep";
 import { Spinner } from "./StatusViews";
-import { SuccessScreen } from "./SuccessScreen";
 import { summarize } from "./summary";
 import { emptyDraft, STEPS, type BookingDraft } from "./types";
 
@@ -45,7 +44,7 @@ function draftFromParams(params: URLSearchParams, { services, barbers }: Catalog
 
 export function BookingWizard({ catalog }: { catalog: Catalog }) {
   const params = useSearchParams();
-  const simulate = (params.get("simulate") as Simulate) ?? null;
+  const router = useRouter();
 
   const [initial] = useState(() => draftFromParams(params, catalog));
   const [draft, setDraft] = useState<BookingDraft>(initial.draft);
@@ -53,8 +52,9 @@ export function BookingWizard({ catalog }: { catalog: Catalog }) {
   const [contactErrors, setContactErrors] = useState<{ name?: string; phone?: string }>({});
   const [showContactErrors, setShowContactErrors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<"SLOT_TAKEN" | "OTHER" | null>(null);
-  const [done, setDone] = useState(false);
+  const [submitError, setSubmitError] = useState<SubmitError | null>(null);
+  /** Увеличиваем, чтобы шаг «Дата и время» заново загрузил свободное время */
+  const [slotsRefresh, setSlotsRefresh] = useState(0);
   const topRef = useRef<HTMLDivElement>(null);
   const isFirstRender = useRef(true);
 
@@ -65,7 +65,7 @@ export function BookingWizard({ catalog }: { catalog: Catalog }) {
       return;
     }
     topRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
-  }, [step, done]);
+  }, [step]);
 
   const update = useCallback((patch: Partial<BookingDraft>) => {
     setDraft((d) => ({ ...d, ...patch }));
@@ -79,12 +79,12 @@ export function BookingWizard({ catalog }: { catalog: Catalog }) {
       // Если выбранный мастер не делает новый набор услуг — сбрасываем его выбор.
       const barber = catalog.barbers.find((b) => b.id === d.barberId);
       const barberStillOk = !barber || canDoAll(barber, serviceIds);
-      return { ...d, serviceIds, barberId: barberStillOk ? d.barberId : null, time: null };
+      return { ...d, serviceIds, barberId: barberStillOk ? d.barberId : null, time: null, startsAt: null };
     });
   }
 
-  const onDateChange = useCallback((date: string) => update({ date, time: null }), [update]);
-  const onTimeChange = useCallback((time: string) => update({ time }), [update]);
+  const onDateChange = useCallback((date: string) => update({ date, time: null, startsAt: null }), [update]);
+  const onSlotChange = useCallback((slot: Slot) => update({ time: slot.time, startsAt: slot.startsAt }), [update]);
 
   function onContactChange(field: "name" | "phone", value: string) {
     const next = { ...draft, [field]: field === "phone" ? phoneDigits(value) : value };
@@ -95,7 +95,7 @@ export function BookingWizard({ catalog }: { catalog: Catalog }) {
   const canProceed = [
     draft.serviceIds.length > 0,
     draft.barberId !== null,
-    draft.date !== null && draft.time !== null,
+    draft.startsAt !== null,
     true, // контакты проверяем по нажатию «Далее», чтобы показать понятные ошибки
     !submitting,
   ][step];
@@ -104,22 +104,20 @@ export function BookingWizard({ catalog }: { catalog: Catalog }) {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const result = await createBooking(
-        {
-          serviceIds: draft.serviceIds,
-          barberId: draft.barberId!,
-          startsAt: toUtcIso(draft.date!, draft.time!),
-          client: { name: draft.name.trim(), phone: toE164(draft.phone) },
-        },
-        catalog,
-        simulate,
-      );
-      // Для «Любой свободный» показываем мастера, которого выбрал «сервер».
-      update({ barberId: result.barberId });
-      setDone(true);
+      const booking = await createBooking({
+        serviceIds: draft.serviceIds,
+        barberId: draft.barberId!,
+        startsAt: draft.startsAt!,
+        client: { name: draft.name.trim(), phone: toE164(draft.phone) },
+      });
+      // Запись сохранена — открываем её страницу (там же отмена и перенос)
+      router.push(`/booking/${booking.manageToken}?created=1`);
     } catch (e) {
-      setSubmitError(e instanceof ApiError && e.code === "SLOT_TAKEN" ? "SLOT_TAKEN" : "OTHER");
-    } finally {
+      setSubmitError(
+        e instanceof ApiError
+          ? { code: e.code, message: e.message }
+          : { code: "UNKNOWN", message: "Не получилось создать запись. Попробуйте ещё раз." },
+      );
       setSubmitting(false);
     }
   }
@@ -146,26 +144,9 @@ export function BookingWizard({ catalog }: { catalog: Catalog }) {
 
   function pickAnotherTime() {
     setSubmitError(null);
-    update({ time: null });
+    update({ time: null, startsAt: null });
+    setSlotsRefresh((k) => k + 1); // время могло измениться — загрузим заново
     setStep(STEP_DATETIME);
-  }
-
-  function restart() {
-    setDraft(emptyDraft);
-    setStep(STEP_SERVICE);
-    setShowContactErrors(false);
-    setContactErrors({});
-    setDone(false);
-  }
-
-  if (done) {
-    return (
-      <CatalogProvider catalog={catalog}>
-        <div className="booking container" ref={topRef}>
-          <SuccessScreen draft={draft} onBookAgain={restart} />
-        </div>
-      </CatalogProvider>
-    );
   }
 
   const totals = summarize(draft, catalog);
@@ -221,7 +202,7 @@ export function BookingWizard({ catalog }: { catalog: Catalog }) {
               <BarberStep
                 serviceIds={draft.serviceIds}
                 selected={draft.barberId}
-                onSelect={(barberId) => update({ barberId, time: null })}
+                onSelect={(barberId) => update({ barberId, time: null, startsAt: null })}
               />
             )}
             {step === STEP_DATETIME && draft.barberId && (
@@ -229,10 +210,10 @@ export function BookingWizard({ catalog }: { catalog: Catalog }) {
                 serviceIds={draft.serviceIds}
                 barberId={draft.barberId}
                 date={draft.date}
-                time={draft.time}
-                simulate={simulate}
+                startsAt={draft.startsAt}
+                refreshKey={slotsRefresh}
                 onDateChange={onDateChange}
-                onTimeChange={onTimeChange}
+                onSlotChange={onSlotChange}
               />
             )}
             {step === STEP_CONTACTS && (

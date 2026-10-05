@@ -20,7 +20,9 @@
     "db:seed": "npm run db:seed --workspace=@barbershop/db",
     "db:reset": "npm run db:reset --workspace=@barbershop/db",
     "db:studio": "npm run db:studio --workspace=@barbershop/db",
-    "db:check": "npm run db:check --workspace=@barbershop/db"
+    "db:check": "npm run db:check --workspace=@barbershop/db",
+    "test": "npm run test --workspace=@barbershop/api",
+    "test:integration": "npm run test:integration --workspace=@barbershop/api"
   },
   "engines": {
     "node": ">=20"

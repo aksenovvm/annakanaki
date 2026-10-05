@@ -669,3 +669,116 @@
   font-size: 14px;
   text-align: left;
 }
+
+.day:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.day-skeleton {
+  flex: 0 0 auto;
+  width: 68px;
+  height: 84px;
+}
+
+/* --- Страница записи /booking/[token] --- */
+.manage {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.manage .success {
+  padding-top: 8px;
+}
+
+.manage__card {
+  gap: 16px;
+}
+
+.manage__card:hover {
+  box-shadow: none;
+  border-color: var(--border);
+}
+
+.manage__link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+}
+
+.manage__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.manage__actions .btn {
+  flex: 1 1 160px;
+}
+
+.manage__confirm {
+  gap: 16px;
+}
+
+.manage__reschedule {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.manage__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.manage .step__footnote a {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.badge {
+  align-self: flex-start;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.badge--confirmed {
+  background: color-mix(in srgb, #22a35a 15%, var(--bg-elevated));
+  color: #1d8a4c;
+}
+
+.badge--cancelled,
+.badge--no_show {
+  background: color-mix(in srgb, #d9534f 12%, var(--bg-elevated));
+  color: #c0392b;
+}
+
+.badge--completed {
+  background: var(--bg-muted);
+  color: var(--text-muted);
+}
+
+.btn--danger {
+  color: #c0392b;
+}
+
+.btn--danger-solid,
+.btn--danger-solid:hover {
+  background: #c0392b;
+  color: #fff;
+}

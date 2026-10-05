@@ -3,7 +3,7 @@
  * Эти функции вызываются на сервере Next.js (в серверных компонентах),
  * поэтому адрес API берём из обычной серверной переменной API_URL.
  */
-import type { ApiErrorBody, Barber, ListResponse, PublicReview, Service } from "@barbershop/shared";
+import type { ApiErrorBody, Barber, Booking, ListResponse, PublicReview, Service } from "@barbershop/shared";
 
 const API_URL = process.env.API_URL ?? "http://localhost:4000";
 
@@ -41,6 +41,16 @@ export async function getBarbers(): Promise<Barber[]> {
 
 export async function getPublicReviews(limit = 6): Promise<PublicReview[]> {
   return (await apiGet<ListResponse<PublicReview>>(`/reviews/public?limit=${limit}`)).items;
+}
+
+/** Запись по секретному токену. null — такой записи нет. */
+export async function getBooking(token: string): Promise<Booking | null> {
+  try {
+    return await apiGet<Booking>(`/bookings/${encodeURIComponent(token)}`);
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 404) return null;
+    throw error;
+  }
 }
 
 /** Результат запроса: данные или признак ошибки — чтобы одна упавшая секция не роняла всю страницу */

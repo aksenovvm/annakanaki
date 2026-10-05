@@ -2,7 +2,9 @@ import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { env } from "./env";
 import { registerErrorHandlers } from "./errors";
+import { availabilityRoutes } from "./routes/availability";
 import { barbersRoutes } from "./routes/barbers";
+import { bookingsRoutes } from "./routes/bookings";
 import { healthRoutes } from "./routes/health";
 import { reviewsRoutes } from "./routes/reviews";
 import { servicesRoutes } from "./routes/services";
@@ -33,6 +35,8 @@ export async function buildApp() {
       await api.register(servicesRoutes);
       await api.register(barbersRoutes);
       await api.register(reviewsRoutes);
+      await api.register(availabilityRoutes);
+      await api.register(bookingsRoutes);
     },
     { prefix: "/api/v1" },
   );

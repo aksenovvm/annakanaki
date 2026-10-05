@@ -1,34 +1,10 @@
 /**
- * Даты в форме записи — это «календарные дни в Ташкенте» в формате YYYY-MM-DD.
- * Ташкент всегда UTC+5 (без перехода на летнее время), поэтому смещение можно задать константой.
+ * Форматирование дат для показа людям. Базовые функции времени — общие с сервером, из @barbershop/shared.
+ * «Дата» — календарный день в Ташкенте в формате YYYY-MM-DD.
  */
-export const SHOP_TIMEZONE = "Asia/Tashkent";
-const SHOP_UTC_OFFSET = "+05:00";
+import { addDays, toShopDate, toShopTime, todayInShop } from "@barbershop/shared";
 
-const isoDayFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: SHOP_TIMEZONE });
-
-/** Сегодняшняя дата в Ташкенте: "2026-10-02" */
-export function todayInShop(now = new Date()): string {
-  return isoDayFormatter.format(now);
-}
-
-/** "2026-10-02" + 3 → "2026-10-05" */
-export function addDays(isoDate: string, days: number): string {
-  const d = new Date(`${isoDate}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-/** Ближайшие `count` дней начиная с сегодняшнего */
-export function upcomingDays(count: number, now = new Date()): string[] {
-  const today = todayInShop(now);
-  return Array.from({ length: count }, (_, i) => addDays(today, i));
-}
-
-/** Дата + время по Ташкенту → момент в UTC (так его потом получит API) */
-export function toUtcIso(isoDate: string, time: string): string {
-  return new Date(`${isoDate}T${time}:00${SHOP_UTC_OFFSET}`).toISOString();
-}
+export { addDays, todayInShop };
 
 const noon = (isoDate: string) => new Date(`${isoDate}T12:00:00Z`);
 
@@ -67,4 +43,10 @@ export function relativeDayLabel(isoDate: string, now = new Date()): string | nu
   if (isoDate === today) return "Сегодня";
   if (isoDate === addDays(today, 1)) return "Завтра";
   return null;
+}
+
+/** Момент из API (ISO, UTC) → «вторник, 7 октября, 10:00» по Ташкенту */
+export function formatMoment(iso: string): string {
+  const moment = new Date(iso);
+  return `${formatFullDate(toShopDate(moment))}, ${toShopTime(moment)}`;
 }

@@ -1,0 +1,267 @@
+/**
+ * Интеграционные тесты записи: настоящий API + настоящая база (DATABASE_URL из apps/api/.env).
+ * Запуск: npm run test:integration
+ *
+ * Тесты создают записи на свободное время в будущем и в конце удаляют всё, что создали.
+ * Тестовые клиенты — с телефонами +998000000xxx.
+ */
+import type { FastifyInstance } from "fastify";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { Booking, Slot } from "@barbershop/shared";
+import { addDays, todayInShop } from "@barbershop/shared";
+
+let app: FastifyInstance;
+let prisma: typeof import("./db").prisma;
+
+let serviceId: string;
+let barberId: string;
+/** День с большим количеством свободных слотов */
+let testDate: string;
+
+const createdBookingIds: string[] = [];
+const TEST_PHONE_PREFIX = "+998000000";
+let phoneCounter = 100;
+const nextPhone = () => `${TEST_PHONE_PREFIX}${phoneCounter++}`;
+
+async function freeSlots(date = testDate): Promise<Slot[]> {
+  const res = await app.inject({
+    method: "GET",
+    url: `/api/v1/availability?serviceIds=${serviceId}&barberId=${barberId}&date=${date}`,
+  });
+  expect(res.statusCode).toBe(200);
+  return res.json().slots;
+}
+
+async function book(startsAt: string, barber = barberId) {
+  const res = await app.inject({
+    method: "POST",
+    url: "/api/v1/bookings",
+    payload: { serviceIds: [serviceId], barberId: barber, startsAt, client: { name: "Тест", phone: nextPhone() } },
+  });
+  if (res.statusCode === 201) createdBookingIds.push(res.json().id);
+  return res;
+}
+
+beforeAll(async () => {
+  ({ buildApp: app } = { buildApp: await (await import("./app")).buildApp() });
+  ({ prisma } = await import("./db"));
+
+  // Берём первую услугу и первого мастера, который её делает
+  const barbers = (await app.inject({ method: "GET", url: "/api/v1/barbers" })).json().items;
+  const barber = barbers.find((b: { services: unknown[] }) => b.services.length > 0);
+  barberId = barber.id;
+  serviceId = barber.services[0].serviceId;
+
+  // Ищем день через неделю-две, где у мастера много свободного времени
+  const res = await app.inject({
+    method: "GET",
+    url: `/api/v1/availability/days?serviceIds=${serviceId}&barberId=${barberId}&from=${addDays(todayInShop(), 7)}&days=14`,
+  });
+  const best = res.json().days.sort((a: { slotsCount: number }, b: { slotsCount: number }) => b.slotsCount - a.slotsCount)[0];
+  expect(best.slotsCount).toBeGreaterThan(5);
+  testDate = best.date;
+});
+
+afterAll(async () => {
+  if (!prisma) return;
+  await prisma.booking.deleteMany({ where: { id: { in: createdBookingIds } } });
+  await prisma.client.deleteMany({ where: { phone: { startsWith: TEST_PHONE_PREFIX } } });
+  await app?.close();
+  await prisma.$disconnect();
+});
+
+describe("защита от двойной записи", () => {
+  it("два параллельных запроса на один слот: ровно один 201 и один 409", async () => {
+    const [slot] = (await freeSlots()).slice(-1);
+
+    const [a, b] = await Promise.all([book(slot.startsAt), book(slot.startsAt)]);
+
+    expect([a.statusCode, b.statusCode].sort()).toEqual([201, 409]);
+    const conflict = a.statusCode === 409 ? a : b;
+    expect(conflict.json().code).toBe("SLOT_TAKEN");
+  });
+
+  it("пять параллельных запросов на один слот: создаётся ровно одна запись", async () => {
+    const slots = await freeSlots();
+    const slot = slots[slots.length - 3];
+
+    const results = await Promise.all(Array.from({ length: 5 }, () => book(slot.startsAt)));
+    const codes = results.map((r) => r.statusCode);
+
+    expect(codes.filter((c) => c === 201)).toHaveLength(1);
+    expect(codes.filter((c) => c === 409)).toHaveLength(4);
+  });
+
+  it("база сама не даёт сохранить пересекающуюся запись в обход API (23P01)", async () => {
+    const { isOverlapError } = await import("@barbershop/db");
+    const [slot] = await freeSlots();
+    const res = await book(slot.startsAt);
+    expect(res.statusCode).toBe(201);
+    const existing: Booking = res.json();
+
+    const client = await prisma.client.create({ data: { name: "Тест", phone: nextPhone() } });
+    const overlapping = prisma.booking.create({
+      data: {
+        clientId: client.id,
+        barberId,
+        startsAt: new Date(new Date(existing.startsAt).getTime() + 15 * 60_000), // на 15 минут позже — пересекается
+        endsAt: new Date(new Date(existing.endsAt).getTime() + 15 * 60_000),
+        totalPrice: 1,
+        totalDurationMin: existing.totalDurationMin,
+        source: "admin",
+        manageToken: `test-${Date.now()}`,
+      },
+    });
+    const error = await overlapping.then(() => null, (e: unknown) => e);
+    expect(isOverlapError(error)).toBe(true);
+  });
+});
+
+describe("запись, перенос и отмена", () => {
+  it("создаёт запись, переносит её и отменяет", async () => {
+    const slots = await freeSlots();
+    const first = slots[1];
+    const created = await book(first.startsAt);
+    expect(created.statusCode).toBe(201);
+    const booking: Booking = created.json();
+    expect(booking.status).toBe("confirmed");
+    expect(booking.canChange).toBe(true);
+    expect(booking.manageToken.length).toBeGreaterThanOrEqual(32);
+
+    // Занятое время пропало из свободных
+    expect((await freeSlots()).map((s) => s.startsAt)).not.toContain(first.startsAt);
+
+    // Запись открывается по токену
+    const view = await app.inject({ method: "GET", url: `/api/v1/bookings/${booking.manageToken}` });
+    expect(view.statusCode).toBe(200);
+    expect(view.json().id).toBe(booking.id);
+
+    // Перенос на другое свободное время
+    const target = (await freeSlots()).at(-2)!;
+    const moved = await app.inject({
+      method: "POST",
+      url: `/api/v1/bookings/${booking.manageToken}/reschedule`,
+      payload: { startsAt: target.startsAt },
+    });
+    expect(moved.statusCode).toBe(200);
+    expect(moved.json().startsAt).toBe(target.startsAt);
+    // Старое время снова свободно, новое — занято
+    const after = (await freeSlots()).map((s) => s.startsAt);
+    expect(after).toContain(first.startsAt);
+    expect(after).not.toContain(target.startsAt);
+
+    // Отмена
+    const cancelled = await app.inject({ method: "POST", url: `/api/v1/bookings/${booking.manageToken}/cancel` });
+    expect(cancelled.statusCode).toBe(200);
+    expect(cancelled.json().status).toBe("cancelled");
+    expect(cancelled.json().canChange).toBe(false);
+    expect((await freeSlots()).map((s) => s.startsAt)).toContain(target.startsAt);
+
+    // Повторная отмена — 409
+    const again = await app.inject({ method: "POST", url: `/api/v1/bookings/${booking.manageToken}/cancel` });
+    expect(again.statusCode).toBe(409);
+    expect(again.json().code).toBe("BOOKING_NOT_ACTIVE");
+  });
+
+  it("перенос на 15 минут позже: своё старое время не мешает", async () => {
+    // Берём время, у которого «+15 минут» тоже свободно (не упирается в обед или другую запись)
+    const slots = (await freeSlots()).map((s) => s.startsAt);
+    const plus15 = (iso: string) => new Date(new Date(iso).getTime() + 15 * 60_000).toISOString();
+    const start = slots.find((s) => slots.includes(plus15(s)))!;
+    const created = await book(start);
+    const booking: Booking = created.json();
+    const later = plus15(booking.startsAt);
+
+    // Без токена это время занято самой записью…
+    expect((await freeSlots()).map((s) => s.startsAt)).not.toContain(later);
+
+    // …а в списке для переноса (с rescheduleToken) — свободно
+    const withToken = await app.inject({
+      method: "GET",
+      url: `/api/v1/availability?serviceIds=${serviceId}&barberId=${barberId}&date=${testDate}&rescheduleToken=${booking.manageToken}`,
+    });
+    expect(withToken.json().slots.map((s: Slot) => s.startsAt)).toContain(later);
+
+    const moved = await app.inject({
+      method: "POST",
+      url: `/api/v1/bookings/${booking.manageToken}/reschedule`,
+      payload: { startsAt: later },
+    });
+    expect(moved.statusCode).toBe(200);
+  });
+
+  it("перенос на занятое время — 409 SLOT_TAKEN", async () => {
+    const slots = await freeSlots();
+    const a: Booking = (await book(slots[6].startsAt)).json();
+    const b: Booking = (await book(slots[10].startsAt)).json();
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/bookings/${b.manageToken}/reschedule`,
+      payload: { startsAt: a.startsAt },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe("SLOT_TAKEN");
+  });
+
+  it("нельзя отменить позже чем за cancel_cutoff_min до начала — 422 TOO_LATE_TO_CHANGE", async () => {
+    // Такую запись через API не создать (min_notice), поэтому кладём её прямо в базу
+    const client = await prisma.client.create({ data: { name: "Тест", phone: nextPhone() } });
+    const soon = new Date(Date.now() + 10 * 60_000);
+    const row = await prisma.booking.create({
+      data: {
+        clientId: client.id,
+        barberId,
+        startsAt: soon,
+        endsAt: new Date(soon.getTime() + 60 * 60_000),
+        totalPrice: 1,
+        totalDurationMin: 60,
+        source: "admin",
+        status: "completed", // не confirmed — чтобы не столкнуться с настоящими записями
+        manageToken: `test-soon-${Date.now()}`,
+      },
+    });
+    createdBookingIds.push(row.id);
+    await prisma.booking.update({ where: { id: row.id }, data: { status: "confirmed" } }).catch(() => undefined);
+
+    const current = await prisma.booking.findUniqueOrThrow({ where: { id: row.id } });
+    const res = await app.inject({ method: "POST", url: `/api/v1/bookings/${row.manageToken}/cancel` });
+    if (current.status === "confirmed") {
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe("TOO_LATE_TO_CHANGE");
+    } else {
+      // время оказалось занято настоящей записью — тогда запись не confirmed, и ответ 409
+      expect(res.json().code).toBe("BOOKING_NOT_ACTIVE");
+    }
+  });
+});
+
+describe("проверки при создании", () => {
+  it("неверные данные — 400 VALIDATION_ERROR", async () => {
+    const res = await app.inject({ method: "POST", url: "/api/v1/bookings", payload: { serviceIds: [] } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().code).toBe("VALIDATION_ERROR");
+  });
+
+  it("ночью мастер не работает — 422 OUTSIDE_WORKING_HOURS", async () => {
+    const res = await book(`${testDate}T03:00:00+05:00`);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe("OUTSIDE_WORKING_HOURS");
+  });
+
+  it("в прошлое — 422 TOO_SOON, слишком далеко — 422 TOO_FAR", async () => {
+    expect((await book("2020-01-01T10:00:00+05:00")).json().code).toBe("TOO_SOON");
+    expect((await book(`${addDays(todayInShop(), 400)}T10:00:00+05:00`)).json().code).toBe("TOO_FAR");
+  });
+
+  it("«Любой свободный» выбирает мастера и сохраняет запись на него", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/availability?serviceIds=${serviceId}&barberId=any&date=${testDate}`,
+    });
+    const slot: Slot = res.json().slots.at(-4);
+    const created = await book(slot.startsAt, "any");
+    expect(created.statusCode).toBe(201);
+    expect(created.json().barber.id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+});

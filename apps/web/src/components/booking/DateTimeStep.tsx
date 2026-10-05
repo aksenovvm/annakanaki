@@ -1,118 +1,168 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  dayOfMonth,
-  formatDayMonth,
-  formatFullDate,
-  formatWeekdayShort,
-  relativeDayLabel,
-  upcomingDays,
-} from "@/lib/date";
-import { getAvailableSlots, type Simulate } from "@/lib/mockApi";
+import { useEffect, useState } from "react";
+import type { Slot } from "@barbershop/shared";
+import { ApiError, fetchAvailability, fetchAvailabilityDays } from "@/lib/apiClient";
+import { dayOfMonth, formatDayMonth, formatFullDate, formatWeekdayShort, relativeDayLabel } from "@/lib/date";
 import { EmptyState, ErrorState, LoadingSlots } from "./StatusViews";
 
 const DAYS_AHEAD = 14;
 
 type Props = {
   serviceIds: string[];
+  /** id мастера или "any" */
   barberId: string;
+  /** При переносе — токен записи, чтобы её собственное время считалось свободным */
+  rescheduleToken?: string;
   date: string | null;
-  time: string | null;
-  simulate: Simulate;
+  startsAt: string | null;
   onDateChange: (date: string) => void;
-  onTimeChange: (time: string) => void;
+  onSlotChange: (slot: Slot) => void;
+  /** Увеличьте, чтобы перезагрузить слоты (например, после SLOT_TAKEN) */
+  refreshKey?: number;
+  title?: string;
 };
 
-type SlotsState =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; slots: string[] };
+type Loadable<T> = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; data: T };
 
-export function DateTimeStep({ serviceIds, barberId, date, time, simulate, onDateChange, onTimeChange }: Props) {
-  const days = useMemo(() => upcomingDays(DAYS_AHEAD), []);
-  const selectedDate = date ?? days[0];
-  const [slots, setSlots] = useState<SlotsState>({ status: "loading" });
-  const [reloadKey, setReloadKey] = useState(0);
+const errorMessage = (e: unknown) => (e instanceof ApiError ? e.message : "Не удалось загрузить свободное время");
 
-  // Если дата ещё не выбрана — сразу выбираем сегодняшнюю.
-  useEffect(() => {
-    if (!date) onDateChange(days[0]);
-  }, [date, days, onDateChange]);
+export function DateTimeStep({
+  serviceIds,
+  barberId,
+  rescheduleToken,
+  date,
+  startsAt,
+  onDateChange,
+  onSlotChange,
+  refreshKey = 0,
+  title = "Выберите дату и время",
+}: Props) {
+  const [days, setDays] = useState<Loadable<{ date: string; slotsCount: number }[]>>({ status: "loading" });
+  const [slots, setSlots] = useState<Loadable<Slot[]>>({ status: "loading" });
+  const [daysReload, setDaysReload] = useState(0);
+  const [slotsReload, setSlotsReload] = useState(0);
+  const servicesKey = serviceIds.join(",");
 
+  // 1. Какие из ближайших дней вообще имеют свободное время
   useEffect(() => {
     let cancelled = false;
-    setSlots({ status: "loading" });
-    getAvailableSlots({ date: selectedDate, barberId, serviceIds, simulate })
-      .then((result) => !cancelled && setSlots({ status: "ready", slots: result }))
-      .catch((e: Error) => !cancelled && setSlots({ status: "error", message: e.message }));
-    // Если пользователь быстро переключил дату, ответ от старого запроса игнорируем.
+    setDays({ status: "loading" });
+    fetchAvailabilityDays({ serviceIds: servicesKey.split(","), barberId, rescheduleToken, days: DAYS_AHEAD })
+      .then((res) => !cancelled && setDays({ status: "ready", data: res.days }))
+      .catch((e) => !cancelled && setDays({ status: "error", message: errorMessage(e) }));
     return () => {
       cancelled = true;
     };
-  }, [selectedDate, barberId, serviceIds, simulate, reloadKey]);
+  }, [servicesKey, barberId, rescheduleToken, daysReload, refreshKey]);
 
-  const retry = useCallback(() => setReloadKey((k) => k + 1), []);
+  // Если дата не выбрана или в выбранный день мест нет — выбираем первый день со свободным временем
+  useEffect(() => {
+    if (days.status !== "ready") return;
+    const current = days.data.find((d) => d.date === date);
+    if (current && current.slotsCount > 0) return;
+    const firstFree = days.data.find((d) => d.slotsCount > 0);
+    if (firstFree) onDateChange(firstFree.date);
+  }, [days, date, onDateChange]);
 
-  const nextDay = days[days.indexOf(selectedDate) + 1];
+  // 2. Свободное время в выбранный день
+  useEffect(() => {
+    if (!date) return;
+    let cancelled = false;
+    setSlots({ status: "loading" });
+    fetchAvailability({ serviceIds: servicesKey.split(","), barberId, rescheduleToken, date })
+      .then((res) => !cancelled && setSlots({ status: "ready", data: res.slots }))
+      .catch((e) => !cancelled && setSlots({ status: "error", message: errorMessage(e) }));
+    // Если пользователь быстро переключил дату, ответ от старого запроса игнорируем
+    return () => {
+      cancelled = true;
+    };
+  }, [servicesKey, barberId, rescheduleToken, date, slotsReload, refreshKey]);
+
+  if (days.status === "loading") {
+    return (
+      <div>
+        <h2 className="step__title">{title}</h2>
+        <div className="days" aria-busy="true">
+          {Array.from({ length: 7 }, (_, i) => (
+            <span key={i} className="skeleton day-skeleton" />
+          ))}
+        </div>
+        <LoadingSlots />
+      </div>
+    );
+  }
+
+  if (days.status === "error") {
+    return (
+      <div>
+        <h2 className="step__title">{title}</h2>
+        <ErrorState text={days.message} onRetry={() => setDaysReload((k) => k + 1)} />
+      </div>
+    );
+  }
+
+  if (!days.data.some((d) => d.slotsCount > 0)) {
+    return (
+      <div>
+        <h2 className="step__title">{title}</h2>
+        <EmptyState
+          title="Нет свободного времени в ближайшие две недели"
+          text="Попробуйте выбрать другого мастера или вариант «Любой свободный»."
+        />
+      </div>
+    );
+  }
 
   return (
     <div>
-      <h2 className="step__title">Выберите дату и время</h2>
+      <h2 className="step__title">{title}</h2>
 
       <div className="days" role="listbox" aria-label="Дата">
-        {days.map((d) => {
-          const isSelected = d === selectedDate;
+        {days.data.map((d) => {
+          const isSelected = d.date === date;
+          const isFull = d.slotsCount === 0;
           return (
             <button
-              key={d}
+              key={d.date}
               type="button"
               role="option"
               aria-selected={isSelected}
-              aria-label={formatFullDate(d)}
+              aria-label={`${formatFullDate(d.date)}${isFull ? ", нет свободного времени" : ""}`}
               className="day"
-              onClick={() => onDateChange(d)}
+              disabled={isFull}
+              onClick={() => onDateChange(d.date)}
             >
-              <span className="day__weekday">{relativeDayLabel(d) ?? formatWeekdayShort(d)}</span>
-              <span className="day__number">{dayOfMonth(d)}</span>
-              <span className="day__month">{formatDayMonth(d).split(" ")[1]}</span>
+              <span className="day__weekday">{relativeDayLabel(d.date) ?? formatWeekdayShort(d.date)}</span>
+              <span className="day__number">{dayOfMonth(d.date)}</span>
+              <span className="day__month">{isFull ? "нет мест" : formatDayMonth(d.date).split(" ")[1]}</span>
             </button>
           );
         })}
       </div>
 
-      <p className="step__subtitle">{formatFullDate(selectedDate)}</p>
+      {date && <p className="step__subtitle">{formatFullDate(date)}</p>}
 
       {slots.status === "loading" && <LoadingSlots />}
 
-      {slots.status === "error" && <ErrorState text={slots.message} onRetry={retry} />}
+      {slots.status === "error" && <ErrorState text={slots.message} onRetry={() => setSlotsReload((k) => k + 1)} />}
 
-      {slots.status === "ready" && slots.slots.length === 0 && (
-        <EmptyState
-          title="На этот день всё занято"
-          text="Попробуйте другой день или другого мастера."
-          action={
-            nextDay && (
-              <button type="button" className="btn btn--ghost btn--sm" onClick={() => onDateChange(nextDay)}>
-                Показать следующий день
-              </button>
-            )
-          }
-        />
+      {slots.status === "ready" && slots.data.length === 0 && (
+        <EmptyState title="На этот день всё занято" text="Выберите другой день." />
       )}
 
-      {slots.status === "ready" && slots.slots.length > 0 && (
+      {slots.status === "ready" && slots.data.length > 0 && (
         <div className="slots" role="listbox" aria-label="Время">
-          {slots.slots.map((t) => (
+          {slots.data.map((slot) => (
             <button
-              key={t}
+              key={slot.startsAt}
               type="button"
               role="option"
-              aria-selected={t === time}
+              aria-selected={slot.startsAt === startsAt}
               className="slot"
-              onClick={() => onTimeChange(t)}
+              onClick={() => onSlotChange(slot)}
             >
-              {t}
+              {slot.time}
             </button>
           ))}
         </div>

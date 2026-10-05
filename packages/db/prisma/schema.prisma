@@ -197,6 +197,10 @@ model Booking {
   manageToken      String        @unique @map("manage_token")
   createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
+  /// [starts_at, ends_at) одним диапазоном. Считается самой базой (GENERATED), руками не заполняется.
+  /// Нужен для ограничения bookings_no_overlap — см. миграцию *_booking_no_overlap.
+  timeRange Unsupported("tstzrange")? @default(dbgenerated("tstzrange(starts_at, ends_at, '[)'::text)")) @map("time_range")
+
   // Отметки фоновых задач (этап 8) — защищают от повторной отправки
   reminderDaySentAt DateTime? @map("reminder_day_sent_at") @db.Timestamptz(3)
   reminder30mSentAt DateTime? @map("reminder_30m_sent_at") @db.Timestamptz(3)
