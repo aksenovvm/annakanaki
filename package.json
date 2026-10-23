@@ -8,9 +8,10 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently --names web,api --prefix-colors blue,green --kill-others-on-fail \"npm:dev:web\" \"npm:dev:api\"",
+    "dev": "concurrently --names web,api,miniapp --prefix-colors blue,green,magenta --kill-others-on-fail \"npm:dev:web\" \"npm:dev:api\" \"npm:dev:miniapp\"",
     "dev:web": "npm run dev --workspace=@barbershop/web",
     "dev:api": "npm run dev --workspace=@barbershop/api",
+    "dev:miniapp": "npm run dev --workspace=@barbershop/miniapp",
     "build": "npm run build --workspace=@barbershop/web",
     "start": "npm run start --workspace=@barbershop/web",
     "lint": "npm run lint --workspaces --if-present",
@@ -22,7 +23,8 @@
     "db:studio": "npm run db:studio --workspace=@barbershop/db",
     "db:check": "npm run db:check --workspace=@barbershop/db",
     "test": "npm run test --workspace=@barbershop/api",
-    "test:integration": "npm run test:integration --workspace=@barbershop/api"
+    "test:integration": "npm run test:integration --workspace=@barbershop/api",
+    "tg:dev-init-data": "npm run tg:dev-init-data --workspace=@barbershop/api"
   },
   "engines": {
     "node": ">=20"

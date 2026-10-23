@@ -25,6 +25,8 @@ const createdBookingIds: string[] = [];
 const TEST_PHONE_PREFIX = "+998000000";
 let phoneCounter = 100;
 const nextPhone = () => `${TEST_PHONE_PREFIX}${phoneCounter++}`;
+/** Тестовые Telegram-пользователи — с id 99900000xx */
+const TEST_TELEGRAM_PREFIX = "99900000";
 
 /** Проверка кода ответа: при ошибке показывает тело ответа — так сразу видно причину */
 function expectStatus(res: { statusCode: number; body: string }, status: number) {
@@ -50,7 +52,12 @@ async function book(startsAt: string, barber = barberId) {
   return res;
 }
 
+/** Свой токен бота для тестов — подписываем им initData так же, как Telegram */
+const TEST_BOT_TOKEN = "123456:integration-test-token";
+
 beforeAll(async () => {
+  // До загрузки приложения: env.ts читает переменные при импорте
+  process.env.TELEGRAM_BOT_TOKEN = TEST_BOT_TOKEN;
   ({ buildApp: app } = { buildApp: await (await import("./app")).buildApp() });
   ({ prisma } = await import("./db"));
 
@@ -80,6 +87,7 @@ afterAll(async () => {
   if (!prisma) return;
   await prisma.booking.deleteMany({ where: { id: { in: createdBookingIds } } });
   await prisma.client.deleteMany({ where: { phone: { startsWith: TEST_PHONE_PREFIX } } });
+  await prisma.client.deleteMany({ where: { telegramId: { startsWith: TEST_TELEGRAM_PREFIX } } });
   await app?.close();
   await prisma.$disconnect();
 });
@@ -331,5 +339,76 @@ describe("проверки при создании", () => {
     const created = await book(slot.startsAt, "any");
     expectStatus(created, 201);
     expect(created.json().barber.id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+});
+
+describe("Telegram Mini App", () => {
+  /** Заголовок, который отправляет Mini App: initData, подписанный «ботом» */
+  async function tma(userId: number, firstName = "Тест") {
+    const { signInitData } = await import("./telegram/initData");
+    const initData = signInitData(
+      { user: JSON.stringify({ id: userId, first_name: firstName }), auth_date: String(Math.floor(Date.now() / 1000)) },
+      TEST_BOT_TOKEN,
+    );
+    return { authorization: `tma ${initData}` };
+  }
+  const userA = Number(`${TEST_TELEGRAM_PREFIX}01`);
+  const userB = Number(`${TEST_TELEGRAM_PREFIX}02`);
+
+  it("без initData — 401, с поддельной подписью — 401", async () => {
+    const none = await app.inject({ method: "GET", url: "/api/v1/me" });
+    expectStatus(none, 401);
+    expect(none.json().code).toBe("TELEGRAM_AUTH_REQUIRED");
+
+    const headers = await tma(userA);
+    const forged = headers.authorization.replace(encodeURIComponent(String(userA)), encodeURIComponent(String(userB)));
+    const bad = await app.inject({ method: "GET", url: "/api/v1/me", headers: { authorization: forged } });
+    expectStatus(bad, 401);
+    expect(bad.json().code).toBe("TELEGRAM_AUTH_INVALID");
+  });
+
+  it("GET /me создаёт клиента, привязанного к Telegram", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/v1/me", headers: await tma(userA, "Алексей") });
+    expectStatus(res, 200);
+    expect(res.json()).toMatchObject({ client: { name: "Алексей", phone: null }, telegram: { id: userA } });
+    const again = await app.inject({ method: "GET", url: "/api/v1/me", headers: await tma(userA, "Алексей") });
+    expect(again.json().client.id).toBe(res.json().client.id); // тот же клиент, не дубль
+  });
+
+  it("запись из Mini App без телефона: source=telegram и видна только в «Моих записях» владельца", async () => {
+    const [slot] = await freeSlots();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/bookings",
+      headers: await tma(userA, "Алексей"),
+      payload: { serviceIds: [serviceId], barberId, startsAt: slot.startsAt, client: { name: "Алексей" } },
+    });
+    expectStatus(res, 201);
+    const booking: Booking = res.json();
+    createdBookingIds.push(booking.id);
+
+    const row = await prisma.booking.findUniqueOrThrow({ where: { id: booking.id }, include: { client: true } });
+    expect(row.source).toBe("telegram");
+    expect(row.client.telegramId).toBe(String(userA));
+
+    const mine = await app.inject({ method: "GET", url: "/api/v1/me/bookings", headers: await tma(userA) });
+    expect(mine.json().items.map((b: Booking) => b.id)).toContain(booking.id);
+
+    const others = await app.inject({ method: "GET", url: "/api/v1/me/bookings", headers: await tma(userB) });
+    expect(others.json().items.map((b: Booking) => b.id)).not.toContain(booking.id);
+
+    // Отмена — тем же способом, что и на сайте: по токену из записи
+    const cancelled = await app.inject({ method: "POST", url: `/api/v1/bookings/${booking.manageToken}/cancel` });
+    expectStatus(cancelled, 200);
+  });
+
+  it("без initData запись без телефона не создаётся (сайт обязан передать телефон)", async () => {
+    const [slot] = await freeSlots();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/bookings",
+      payload: { serviceIds: [serviceId], barberId, startsAt: slot.startsAt, client: { name: "Без телефона" } },
+    });
+    expectStatus(res, 400);
   });
 });

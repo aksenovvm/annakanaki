@@ -6,6 +6,7 @@ import {
   MINUTE_MS,
   bookingSchema,
   createBookingRequestSchema,
+  createTelegramBookingRequestSchema,
   rescheduleRequestSchema,
   toShopDate,
   type Booking,
@@ -15,8 +16,9 @@ import { canChangeBooking, checkStart, pickLeastBusy, type StartCheck } from "..
 import { loadBarberOptions, type BarberOption } from "../domain/calendars";
 import { loadSettings, type ShopSettings } from "../domain/settings";
 import { AppError } from "../errors";
+import { telegramUserFromRequest } from "../telegram/auth";
 
-const bookingInclude = {
+export const bookingInclude = {
   barber: true,
   client: true,
   services: true,
@@ -91,13 +93,48 @@ function assertCanChange(booking: BookingRow, settings: ShopSettings) {
   }
 }
 
+/**
+ * Кто записывается:
+ * - из Telegram — клиент привязан к Telegram-аккаунту (telegram_id);
+ * - с сайта — клиент узнаётся по телефону.
+ * Имя (и телефон, если указан) берём из последней записи — человек мог в прошлый раз написать иначе.
+ */
+async function resolveClient(
+  tx: Prisma.TransactionClient,
+  input: { name: string; phone?: string },
+  telegramId?: number,
+) {
+  if (telegramId !== undefined) {
+    const id = String(telegramId);
+    const existing = await tx.client.findUnique({ where: { telegramId: id } });
+    if (!existing) return tx.client.create({ data: { name: input.name, phone: input.phone, telegramId: id } });
+    const changed = existing.name !== input.name || (input.phone && existing.phone !== input.phone);
+    return changed
+      ? tx.client.update({ where: { id: existing.id }, data: { name: input.name, phone: input.phone ?? existing.phone } })
+      : existing;
+  }
+
+  // С сайта телефон обязателен (это проверяет Zod-схема) — но перестрахуемся: без него нельзя искать клиента
+  if (!input.phone) throw new AppError(400, "VALIDATION_ERROR", "Укажите телефон");
+  const existing = await tx.client.findFirst({ where: { phone: input.phone }, orderBy: { createdAt: "asc" } });
+  if (!existing) return tx.client.create({ data: { name: input.name, phone: input.phone } });
+  return existing.name === input.name
+    ? existing
+    : tx.client.update({ where: { id: existing.id }, data: { name: input.name } });
+}
+
 const tokenParams = z.object({ token: z.string().min(10).max(100) });
 
 export async function bookingsRoutes(app: FastifyInstance) {
   /** POST /api/v1/bookings — создать запись */
   app.post("/bookings", async (request, reply) => {
+    // Запрос из Telegram Mini App? Тогда клиент — проверенный Telegram-пользователь, телефон необязателен.
+    const telegramUser = telegramUserFromRequest(request);
+
     // 1. Проверяем входные данные
-    const body = createBookingRequestSchema.parse(request.body);
+    const body = telegramUser
+      ? createTelegramBookingRequestSchema.parse(request.body)
+      : createBookingRequestSchema.parse(request.body);
     const startsAt = new Date(body.startsAt);
     const date = toShopDate(startsAt);
     const now = new Date();
@@ -134,17 +171,7 @@ export async function bookingsRoutes(app: FastifyInstance) {
         const booking = await withRetry(() =>
           prisma.$transaction(
             async (tx) => {
-              // Клиент с сайта узнаётся по телефону. Имя берём из последней записи —
-              // человек мог в прошлый раз написать его иначе.
-              const existing = await tx.client.findFirst({
-                where: { phone: body.client.phone },
-                orderBy: { createdAt: "asc" },
-              });
-              const client = existing
-                ? existing.name === body.client.name
-                  ? existing
-                  : await tx.client.update({ where: { id: existing.id }, data: { name: body.client.name } })
-                : await tx.client.create({ data: { name: body.client.name, phone: body.client.phone } });
+              const client = await resolveClient(tx, body.client, telegramUser?.id);
 
               return tx.booking.create({
                 data: {
@@ -155,7 +182,7 @@ export async function bookingsRoutes(app: FastifyInstance) {
                   totalPrice: option.totalPrice,
                   totalDurationMin: option.durationMin,
                   status: "confirmed",
-                  source: "web",
+                  source: telegramUser ? "telegram" : "web",
                   manageToken: newManageToken(),
                   // Снимок услуг: если цену потом поменяют, эта запись не изменится
                   services: { create: option.services },

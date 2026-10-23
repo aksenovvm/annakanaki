@@ -6,6 +6,7 @@ import { availabilityRoutes } from "./routes/availability";
 import { barbersRoutes } from "./routes/barbers";
 import { bookingsRoutes } from "./routes/bookings";
 import { healthRoutes } from "./routes/health";
+import { meRoutes } from "./routes/me";
 import { reviewsRoutes } from "./routes/reviews";
 import { servicesRoutes } from "./routes/services";
 
@@ -37,6 +38,7 @@ export async function buildApp() {
       await api.register(reviewsRoutes);
       await api.register(availabilityRoutes);
       await api.register(bookingsRoutes);
+      await api.register(meRoutes);
     },
     { prefix: "/api/v1" },
   );

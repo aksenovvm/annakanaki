@@ -19,6 +19,8 @@
 - **Этап 4 — backend** (`apps/api`): сайт берёт услуги, барберов и отзывы из базы через API;
 - **Этап 5 — настоящая запись**: свободное время считает сервер, запись сохраняется в базу,
   двойная запись запрещена на уровне PostgreSQL, отмена и перенос — на странице `/booking/[token]`.
+- **Этап 6 — Telegram Mini App** (`apps/miniapp`): запись, «Мои записи», перенос и отмена внутри Telegram.
+  Как подключить бота и открыть в Telegram — [docs/telegram-miniapp.md](docs/telegram-miniapp.md).
 
 Чтобы посмотреть состояния ошибок в форме записи:
 
@@ -30,10 +32,11 @@
 ```text
 apps/
   web/        Next.js — сайт: /, /book, /booking/[token] (позже /admin)
-  api/        Fastify — REST API: услуги, барберы, отзывы, свободное время, записи
+  api/        Fastify — REST API: услуги, барберы, отзывы, свободное время, записи, вход через Telegram
+  miniapp/    React + Vite — Telegram Mini App
 packages/
   db/         Prisma: схема БД, миграции, seed, клиент для API
-  shared/     Zod-схемы и типы ответов API — общие для сервера и сайта
+  shared/     Zod-схемы и типы API, время, форматирование — общие для сервера, сайта и Mini App
 docs/         PRD, SPEC, TASKS
 ```
 
@@ -46,7 +49,7 @@ docs/         PRD, SPEC, TASKS
 
 ```bash
 npm install
-npm run dev        # сайт: http://localhost:3000, API: http://localhost:4000/health
+npm run dev        # сайт: http://localhost:3000, API: http://localhost:4000/health, Mini App: http://localhost:5173
 ```
 
 Другие команды:

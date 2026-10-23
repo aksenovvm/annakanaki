@@ -11,6 +11,10 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   // "localhost" — Fastify слушает и 127.0.0.1, и ::1 (важно для macOS)
   HOST: z.string().default("localhost"),
+  /** Токен бота от @BotFather. Нужен, чтобы проверять подпись Telegram Mini App (initData). */
+  TELEGRAM_BOT_TOKEN: z.string().trim().optional(),
+  /** Сколько секунд initData считается свежим (по умолчанию сутки) */
+  TELEGRAM_INIT_DATA_MAX_AGE_SEC: z.coerce.number().int().positive().default(86_400),
   CORS_ORIGINS: z
     .string()
     .default("http://localhost:3000")

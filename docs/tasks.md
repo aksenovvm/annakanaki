@@ -334,23 +334,23 @@ exclusion constraint `bookings_no_overlap`; ошибка `23P01` → `409 SLOT_T
 
 ## Задачи
 
-- [ ] Создать `apps/miniapp`.
-- [ ] Настроить React + Vite + TypeScript.
-- [ ] Подключить Telegram Mini App SDK.
-- [ ] Получать `themeParams`.
-- [ ] Реализовать проверку `initData` через backend.
-- [ ] Использовать API `/services`.
-- [ ] Использовать API `/barbers`.
-- [ ] Использовать API `/availability`.
-- [ ] Использовать API `/bookings`.
-- [ ] Сделать сценарий выбора услуги.
-- [ ] Сделать выбор барбера.
-- [ ] Сделать выбор даты и времени.
-- [ ] Сделать подтверждение.
-- [ ] Сделать «Мои записи».
-- [ ] Добавить отмену.
-- [ ] Добавить перенос.
-- [ ] Обработать `SLOT_TAKEN`.
+- [x] Создать `apps/miniapp`.
+- [x] Настроить React + Vite + TypeScript.
+- [x] Подключить Telegram Mini App SDK.
+- [x] Получать `themeParams`.
+- [x] Реализовать проверку `initData` через backend.
+- [x] Использовать API `/services`.
+- [x] Использовать API `/barbers`.
+- [x] Использовать API `/availability`.
+- [x] Использовать API `/bookings`.
+- [x] Сделать сценарий выбора услуги.
+- [x] Сделать выбор барбера.
+- [x] Сделать выбор даты и времени.
+- [x] Сделать подтверждение.
+- [x] Сделать «Мои записи».
+- [x] Добавить отмену.
+- [x] Добавить перенос.
+- [x] Обработать `SLOT_TAKEN`.
 - [ ] Проверить внутри Telegram.
 
 ## Готово, когда
@@ -366,6 +366,35 @@ Website ─────┐
              ↑
 Mini App ────┘
 ```
+
+## Статус: 🟡 код готов, проверка внутри Telegram — за вами
+
+Mini App (`apps/miniapp`, React + Vite + TypeScript):
+
+- официальный скрипт `telegram-web-app.js`: `ready`, `expand`, цвета из `themeParams` (и смена темы на лету),
+  нативные `MainButton` / `BackButton`, вибрация, нативный диалог подтверждения; вне Telegram — обычные кнопки;
+- сценарий: услуга → барбер / «Любой свободный» (с ценой каждого мастера) → дата и время → подтверждение
+  (имя из Telegram, телефон необязателен);
+- «Мои записи» (предстоящие + история), карточка записи с переносом и отменой, обработка `SLOT_TAKEN`;
+- те же API `/services`, `/barbers`, `/availability`, `/bookings`; в разработке — через Vite-прокси.
+
+Backend (`apps/api`):
+
+- проверка `initData`: HMAC-подпись токеном бота, срок жизни (`TELEGRAM_INIT_DATA_MAX_AGE_SEC`, сутки), пользователь;
+  сверена с независимой реализацией по документации Telegram;
+- заголовок `Authorization: tma <initData>`; `GET /me` (найти или создать клиента по `telegram_id`),
+  `GET /me/bookings`; `POST /bookings` из Mini App — `source = telegram`, телефон необязателен;
+- `npm run tg:dev-init-data` — подписанная тестовая строка для разработки в браузере (без обхода проверки).
+
+Общий пакет: форматирование дат, цен и телефона переехало в `@barbershop/shared` (сайт и Mini App),
+у пакета есть лёгкие точки входа `@barbershop/shared/format`, `/time`, `/phone` — без Zod в бандле Mini App.
+
+Тесты: +6 unit (initData: верная подпись, подделка, чужой бот, устаревшие данные, мусор) и
++4 интеграционных (401 без входа и с подделкой, `/me`, запись без телефона с `source=telegram`,
+«Мои записи» видны только владельцу).
+
+Осталось вам — [docs/telegram-miniapp.md](telegram-miniapp.md): создать бота, туннель, кнопку меню
+и открыть Mini App в Telegram.
 
 ---
 

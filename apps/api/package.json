@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --project unit",
     "test:watch": "vitest --project unit",
-    "test:integration": "vitest run --project integration"
+    "test:integration": "vitest run --project integration",
+    "tg:dev-init-data": "tsx scripts/dev-init-data.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

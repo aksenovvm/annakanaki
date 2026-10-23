@@ -6,6 +6,8 @@ import { z } from "zod";
 import { isValidIsoDate } from "./time";
 
 export * from "./time";
+export * from "./format";
+export * from "./phone";
 
 export const serviceSchema = z.object({
   id: z.uuid(),
@@ -124,6 +126,18 @@ export const createBookingRequestSchema = z.object({
 });
 export type CreateBookingRequest = z.infer<typeof createBookingRequestSchema>;
 
+/**
+ * Запись из Telegram Mini App: клиент определяется по проверенному Telegram-аккаунту (initData),
+ * поэтому телефон необязателен. Имя — то, что человек оставил в форме (по умолчанию — из Telegram).
+ */
+export const createTelegramBookingRequestSchema = createBookingRequestSchema.extend({
+  client: z.object({
+    name: z.string().trim().min(2, "Имя — минимум 2 символа").max(60),
+    phone: phoneSchema.optional(),
+  }),
+});
+export type CreateTelegramBookingRequest = z.infer<typeof createTelegramBookingRequestSchema>;
+
 export const rescheduleRequestSchema = z.object({
   startsAt: z.iso.datetime({ offset: true }),
 });
@@ -156,3 +170,11 @@ export const BOOKING_ERROR_CODES = [
   "TOO_LATE_TO_CHANGE",
   "BOOKING_NOT_ACTIVE",
 ] as const;
+
+// ---------- Telegram Mini App ----------
+
+export const meResponseSchema = z.object({
+  client: z.object({ id: z.uuid(), name: z.string(), phone: z.string().nullable() }),
+  telegram: z.object({ id: z.number(), firstName: z.string(), username: z.string().nullable() }),
+});
+export type MeResponse = z.infer<typeof meResponseSchema>;
