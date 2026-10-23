@@ -6,9 +6,12 @@
  * Сервер проверяет её по-настоящему, никаких «обходов» проверки нет.
  *
  * Запуск: npm run tg:dev-init-data
+ * Скрипт сам записывает строку в apps/miniapp/.env.local (остальные строки файла не трогает).
  * Строка действует TELEGRAM_INIT_DATA_MAX_AGE_SEC (по умолчанию сутки), потом запустите скрипт снова.
  */
 import "dotenv/config";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { signInitData } from "../src/telegram/initData";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -26,5 +29,14 @@ const initData = signInitData(
   token,
 );
 
-console.log("\nСкопируйте строку ниже в файл apps/miniapp/.env.local:\n");
-console.log(`VITE_DEV_INIT_DATA="${initData}"\n`);
+const envFile = fileURLToPath(new URL("../../miniapp/.env.local", import.meta.url));
+const line = `VITE_DEV_INIT_DATA="${initData}"`;
+const others = existsSync(envFile)
+  ? readFileSync(envFile, "utf8")
+      .split("\n")
+      .filter((l) => l.trim() !== "" && !l.startsWith("VITE_DEV_INIT_DATA="))
+  : [];
+writeFileSync(envFile, [...others, line, ""].join("\n"));
+
+console.log(`\n✅ Тестовый вход записан в apps/miniapp/.env.local`);
+console.log("   Обновите страницу http://localhost:5173 (если npm run dev ещё не запущен — запустите).\n");

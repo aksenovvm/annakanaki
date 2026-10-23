@@ -97,10 +97,16 @@ function NotInTelegram() {
         Это приложение работает внутри Telegram: так мы понимаем, кто записывается, без регистрации и паролей.
       </p>
       {import.meta.env.DEV && !insideTelegram && (
-        <p className="notice">
-          Для разработки в браузере: выполните <code>npm run tg:dev-init-data</code> и вставьте строку в{" "}
-          <code>apps/miniapp/.env.local</code>, затем перезапустите <code>npm run dev</code>.
-        </p>
+        <div className="notice">
+          <p>
+            <strong>Режим разработки:</strong> Vite не видит тестовый вход (VITE_DEV_INIT_DATA).
+          </p>
+          <p>
+            1. В терминале: <code>npm run tg:dev-init-data</code> — скрипт сам создаст{" "}
+            <code>apps/miniapp/.env.local</code>.
+          </p>
+          <p>2. Обновите эту страницу.</p>
+        </div>
       )}
     </div>
   );
