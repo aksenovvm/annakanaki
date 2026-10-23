@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { listOf, bookingSchema, meResponseSchema } from "@barbershop/shared";
 import { prisma } from "../db";
+import { upsertTelegramClient } from "../domain/clients";
 import { loadSettings } from "../domain/settings";
 import { requireTelegramUser, telegramDisplayName } from "../telegram/auth";
 import { bookingInclude, toBookingDto } from "./bookings";
@@ -14,10 +15,8 @@ export async function meRoutes(app: FastifyInstance) {
    */
   app.get("/me", async (request) => {
     const user = requireTelegramUser(request);
-    const telegramId = String(user.id);
-    const client =
-      (await prisma.client.findUnique({ where: { telegramId } })) ??
-      (await prisma.client.create({ data: { telegramId, name: telegramDisplayName(user) } }));
+    // Найти или создать клиента — атомарно (см. upsertTelegramClient)
+    const client = await upsertTelegramClient(prisma, String(user.id), { name: telegramDisplayName(user) }, false);
 
     return meResponseSchema.parse({
       client: { id: client.id, name: client.name, phone: client.phone },

@@ -375,6 +375,19 @@ describe("Telegram Mini App", () => {
     expect(again.json().client.id).toBe(res.json().client.id); // тот же клиент, не дубль
   });
 
+  it("10 одновременных /me от нового пользователя: все 200 и ровно один клиент", async () => {
+    // Так ведёт себя Mini App при запуске в режиме разработки (React запускает загрузку дважды).
+    // Раньше «найти → создать» давало 500 на уникальности telegram_id.
+    const newUser = Number(`${TEST_TELEGRAM_PREFIX}03`);
+    const headers = await tma(newUser, "Новый");
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => app.inject({ method: "GET", url: "/api/v1/me", headers })),
+    );
+    expect(results.map((r) => r.statusCode), results.map((r) => r.body).join(" | ")).toEqual(Array(10).fill(200));
+    expect(new Set(results.map((r) => r.json().client.id)).size).toBe(1);
+    expect(await prisma.client.count({ where: { telegramId: String(newUser) } })).toBe(1);
+  });
+
   it("запись из Mini App без телефона: source=telegram и видна только в «Моих записях» владельца", async () => {
     const [slot] = await freeSlots();
     const res = await app.inject({

@@ -14,6 +14,7 @@ import {
 import { prisma } from "../db";
 import { canChangeBooking, checkStart, pickLeastBusy, type StartCheck } from "../domain/availability";
 import { loadBarberOptions, type BarberOption } from "../domain/calendars";
+import { upsertTelegramClient } from "../domain/clients";
 import { loadSettings, type ShopSettings } from "../domain/settings";
 import { AppError } from "../errors";
 import { telegramUserFromRequest } from "../telegram/auth";
@@ -105,13 +106,8 @@ async function resolveClient(
   telegramId?: number,
 ) {
   if (telegramId !== undefined) {
-    const id = String(telegramId);
-    const existing = await tx.client.findUnique({ where: { telegramId: id } });
-    if (!existing) return tx.client.create({ data: { name: input.name, phone: input.phone, telegramId: id } });
-    const changed = existing.name !== input.name || (input.phone && existing.phone !== input.phone);
-    return changed
-      ? tx.client.update({ where: { id: existing.id }, data: { name: input.name, phone: input.phone ?? existing.phone } })
-      : existing;
+    // Атомарно, без гонки «найти → создать» при одновременных запросах (см. upsertTelegramClient)
+    return upsertTelegramClient(tx, String(telegramId), input, true);
   }
 
   // С сайта телефон обязателен (это проверяет Zod-схема) — но перестрахуемся: без него нельзя искать клиента
