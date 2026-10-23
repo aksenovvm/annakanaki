@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { formatDuration, formatFullDate, formatPrice, formatPriceRange, plural } from "@barbershop/shared/format";
 import { formatPhone, isValidPhone, phoneDigits, toE164 } from "@barbershop/shared/phone";
 import type { Booking, Slot } from "@barbershop/shared";
-import { ApiError, api, errorText } from "../api";
+import { ApiError, api, errorDetails, errorText } from "../api";
 import { BackButton, MainButton } from "../buttons";
 import { canDoAll, priceRange, totalsFor, type Catalog } from "../catalog";
 import { haptic } from "../telegram";
@@ -39,7 +39,7 @@ export function BookFlow({ catalog, defaultName, defaultPhone, onBooked }: Props
     phone: defaultPhone ? phoneDigits(defaultPhone) : "",
   });
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<{ code: string; message: string } | null>(null);
+  const [error, setError] = useState<{ code: string; message: string; details: string | null } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const submittingRef = useRef(false);
 
@@ -78,7 +78,7 @@ export function BookFlow({ catalog, defaultName, defaultPhone, onBooked }: Props
       onBooked(booking);
     } catch (e) {
       haptic.error();
-      setError({ code: e instanceof ApiError ? e.code : "UNKNOWN", message: errorText(e) });
+      setError({ code: e instanceof ApiError ? e.code : "UNKNOWN", message: errorText(e), details: errorDetails(e) });
       if (e instanceof ApiError && e.code === "SLOT_TAKEN") {
         // Время заняли, пока человек подтверждал — возвращаем к выбору времени со свежими слотами
         update({ slot: null });
@@ -107,6 +107,7 @@ export function BookFlow({ catalog, defaultName, defaultPhone, onBooked }: Props
       {error && (
         <div className="notice notice--error" role="alert">
           {error.code === "SLOT_TAKEN" ? "Это время только что заняли. Выберите другое." : error.message}
+          {error.details && error.code !== "SLOT_TAKEN" && <pre className="debug">{error.details}</pre>}
         </div>
       )}
 

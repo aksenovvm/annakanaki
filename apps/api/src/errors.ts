@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { ZodError, z } from "zod";
 import type { ApiErrorBody } from "@barbershop/shared";
+import { env } from "./env";
 
 /**
  * Ожидаемая ошибка, о которой нужно честно сказать клиенту:
@@ -40,8 +41,22 @@ export function registerErrorHandlers(app: FastifyInstance) {
     }
 
     if (status >= 500) {
-      // Подробности — только в лог сервера, клиенту их показывать нельзя
       request.log.error({ err: error }, "Необработанная ошибка");
+      // В продакшене подробности — только в лог сервера: клиенту их показывать нельзя.
+      // В разработке кладём причину в ответ, чтобы её было видно прямо на экране сайта / Mini App.
+      if (env.NODE_ENV === "development") {
+        const e = error as { message?: string; code?: string; name?: string };
+        body = {
+          ...body,
+          details: {
+            where: `${request.method} ${request.url.split("?")[0]}`,
+            name: e?.name,
+            code: e?.code,
+            // последние строки сообщения Prisma — самые полезные
+            message: String(e?.message ?? error).trim().split("\n").filter(Boolean).slice(-4).join("\n"),
+          },
+        };
+      }
     }
     return reply.status(status).send(body);
   });

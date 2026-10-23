@@ -449,3 +449,15 @@ code {
 .main-button:disabled {
   opacity: 0.45;
 }
+
+/* Подробности ошибки в режиме разработки */
+.debug {
+  margin: 12px 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--bg-section);
+  color: var(--hint);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

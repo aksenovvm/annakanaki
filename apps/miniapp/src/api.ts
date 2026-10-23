@@ -23,6 +23,9 @@ export class ApiError extends Error {
     public status: number,
     public code: string,
     message: string,
+    /** Какой запрос и подробности от сервера (сервер присылает их только в режиме разработки) */
+    public path = "",
+    public details?: unknown,
   ) {
     super(message);
   }
@@ -38,12 +41,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(`${API_URL}/api/v1${path}`, { ...init, headers });
   } catch {
-    throw new ApiError(0, "NETWORK", "Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.");
+    throw new ApiError(0, "NETWORK", "Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.", path);
   }
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     const err = body as ApiErrorBody | null;
-    throw new ApiError(res.status, err?.code ?? "UNKNOWN", err?.message ?? "Что-то пошло не так. Попробуйте ещё раз.");
+    throw new ApiError(
+      res.status,
+      err?.code ?? "UNKNOWN",
+      err?.message ?? "Что-то пошло не так. Попробуйте ещё раз.",
+      path,
+      err?.details,
+    );
   }
   return body as T;
 }
@@ -76,3 +85,13 @@ function slotParams(q: { serviceIds: string[]; barberId: string; rescheduleToken
 }
 
 export const errorText = (e: unknown) => (e instanceof ApiError ? e.message : "Что-то пошло не так. Попробуйте ещё раз.");
+
+/** Технические подробности ошибки — показываем только в режиме разработки, чтобы было что прислать */
+export function errorDetails(e: unknown): string | null {
+  if (!import.meta.env.DEV) return null;
+  if (e instanceof ApiError) {
+    const details = e.details ? `\n${JSON.stringify(e.details, null, 2)}` : "";
+    return `${e.status} ${e.code} · ${e.path}${details}`;
+  }
+  return e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+}

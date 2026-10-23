@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Booking, MeResponse } from "@barbershop/shared";
-import { api, errorText } from "./api";
+import { api, errorDetails, errorText } from "./api";
 import type { Catalog } from "./catalog";
 import { BookFlow } from "./screens/BookFlow";
 import { BookingDetails } from "./screens/BookingDetails";
@@ -14,7 +14,7 @@ type Screen =
 
 type Boot =
   | { status: "loading" }
-  | { status: "error"; message: string }
+  | { status: "error"; message: string; details: string | null }
   | { status: "ready"; me: MeResponse; catalog: Catalog };
 
 export function App() {
@@ -27,7 +27,7 @@ export function App() {
     if (!initData) return;
     Promise.all([api.me(), api.services(), api.barbers()])
       .then(([me, services, barbers]) => setBoot({ status: "ready", me, catalog: { services, barbers } }))
-      .catch((e) => setBoot({ status: "error", message: errorText(e) }));
+      .catch((e) => setBoot({ status: "error", message: errorText(e), details: errorDetails(e) }));
   }, [initData]);
 
   if (!initData) return <NotInTelegram />;
@@ -36,6 +36,12 @@ export function App() {
     return (
       <div className="screen">
         <p className="notice notice--error">{boot.message}</p>
+        {boot.details && (
+          <pre className="debug">
+            Подробности (видны только в режиме разработки — сделайте скриншот):{"\n"}
+            {boot.details}
+          </pre>
+        )}
         <button type="button" className="button-secondary" onClick={() => location.reload()}>
           Попробовать снова
         </button>
